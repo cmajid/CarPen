@@ -121,7 +121,7 @@ func main() {
 	g.car.Direction = v1.Normalize()
 
 	ebiten.SetWindowSize(640, 480)
-	ebiten.SetWindowTitle("Hello, World!")
+	ebiten.SetWindowTitle("Car Pen")
 
 	// pt1 := car.Point{X: 2, Y: 3}
 	// fmt.Println(pt1)
