@@ -1,9 +1,7 @@
-package cp_vector
+package carpen
 
 import (
 	"math"
-
-	"github.com/cmajid/carpen/cp_pivot"
 )
 
 type Vector struct {
@@ -13,9 +11,9 @@ type Vector struct {
 func (v *Vector) Length() float64 {
 	return math.Sqrt(v.X*v.X + v.Y*v.Y)
 }
-func (norm *Vector) Normalize() cp_pivot.Direction {
+func (norm *Vector) Normalize() Direction {
 
-	return cp_pivot.Direction{
+	return Direction{
 		X: norm.X / norm.Length(),
 		Y: norm.Y / norm.Length(),
 	}

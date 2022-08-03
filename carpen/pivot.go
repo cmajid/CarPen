@@ -1,4 +1,4 @@
-package cp_pivot
+package carpen
 
 type Pivot struct {
 	X, Y float64
