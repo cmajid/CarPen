@@ -12,7 +12,7 @@ CarPen written in Go using [Ebiten](https://github.com/hajimehoshi/ebiten)
 
 Once window is open one can do the following:
 
-* `[Arrow-Key]` - Move the car
+* `[Arrow-Keys]` - Move the car
 
 Enjoy!
 
