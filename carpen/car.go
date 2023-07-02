@@ -2,10 +2,12 @@ package carpen
 
 import (
 	"image"
-	"image/color"
+	"log"
 	"math"
 
 	"github.com/fogleman/gg"
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 type Point struct {
@@ -37,6 +39,15 @@ type Car struct {
 	TempDirPivot   TempDirPivot
 	Wheels         []Wheel
 	Direction      Direction
+	img 		   *ebiten.Image
+}
+
+func (c *Car) Init() {
+	var err error
+	c.img, _, err = ebitenutil.NewImageFromFile("car-yellow.png")
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func (c *Car) UpdateDirection() {
@@ -47,20 +58,20 @@ func (c *Car) UpdateDirection() {
 }
 
 func (p Point) Length() float64 {
-
 	return math.Sqrt(math.Pow(p.X, 2) + math.Pow(p.Y, 2))
 }
+
 func (car *Car) DrawCar() image.Image {
 
 	dc := gg.NewContext(640, 480)
 	car.DrawWheels(dc)
 	dc.Translate(car.Pivot.X, car.Pivot.Y)
 	dc.Rotate(car.Rotation * math.Pi / 180)
-	dc.SetColor(color.RGBA{0xff, 0, 0, 0xff})
-	dc.DrawRectangle(-50, -20, float64(car.Width), float64(car.Height))
+	dc.DrawImage(car.img, -60, -30)
 	dc.Fill()
 	return dc.Image()
 }
+
 func (car *Car) DrawWheels(dc *gg.Context) gg.Context {
 
 	for i := 0; i < len(car.Wheels); i++ {
@@ -100,7 +111,6 @@ func (car *Car) DrawWheels(dc *gg.Context) gg.Context {
 }
 
 func (car *Car) Move() error {
-
 	_flag := false
 	if car.Accelerate && car.Speed < 6 {
 		car.Speed += car.Acceleration
@@ -123,7 +133,7 @@ func (car *Car) Move() error {
 	car.Pivot.X += car.Direction.X
 	car.Pivot.Y += car.Direction.Y
 
-	// Drift!!! section :D
+	// Drift!!! :D
 	v := Vector{X: car.Pivot.X - car.RearPivotAbs.X, Y: car.Pivot.Y - car.RearPivotAbs.Y}
 	var rotation = math.Atan2(-v.Y, v.X) * 180 / math.Pi
 
