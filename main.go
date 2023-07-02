@@ -23,6 +23,7 @@ func (g *Game) Init() {
 		Accelerate:  false,
 		Decelerate:  false,
 
+		MaxSpeed:		   6,
 		WheelWidth:        12,
 		WheelHeight:       30,
 		WheelRotationStep: 0.6,
@@ -95,8 +96,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.White)
 	g.car.Move()
 	img := g.car.DrawCar()
-	em := ebiten.NewImageFromImage(img)
-	screen.DrawImage(em, &ebiten.DrawImageOptions{})
+	screen.DrawImage(ebiten.NewImageFromImage(img), &ebiten.DrawImageOptions{})
 	ebitenutil.DebugPrint(screen, fmt.Sprintf("TPS: %0.2f", ebiten.ActualTPS()))
 }
 

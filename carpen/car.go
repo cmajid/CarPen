@@ -10,10 +10,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
-type Point struct {
-	X, Y float64
-}
-
 type Car struct {
 	RotateLeft,
 	RotateRight,
@@ -30,6 +26,7 @@ type Car struct {
 	Y,
 	Rotation,
 	Speed,
+	MaxSpeed,
 	Acceleration float64
 	Pivot          Pivot
 	FrontPivot     FrontPivot
@@ -57,12 +54,7 @@ func (c *Car) UpdateDirection() {
 	c.Direction.Y *= c.Speed
 }
 
-func (p Point) Length() float64 {
-	return math.Sqrt(math.Pow(p.X, 2) + math.Pow(p.Y, 2))
-}
-
 func (car *Car) DrawCar() image.Image {
-
 	dc := gg.NewContext(640, 480)
 	car.DrawWheels(dc)
 	dc.Translate(car.Pivot.X, car.Pivot.Y)
@@ -73,12 +65,10 @@ func (car *Car) DrawCar() image.Image {
 }
 
 func (car *Car) DrawWheels(dc *gg.Context) gg.Context {
-
 	for i := 0; i < len(car.Wheels); i++ {
 		if car.RotateLeft {
 			if car.WheelAngle > -car.WheelMaxAngle {
 				car.WheelAngle = car.WheelAngle - car.WheelRotationStep
-
 			}
 		}
 		if car.RotateRight {
@@ -111,23 +101,30 @@ func (car *Car) DrawWheels(dc *gg.Context) gg.Context {
 }
 
 func (car *Car) Move() error {
-	_flag := false
-	if car.Accelerate && car.Speed < 6 {
+	
+	forceStop := true
+	moveFast := car.Accelerate && car.Speed < car.MaxSpeed
+	tryToStop := car.Speed > 0 
+	moveBackward := car.Decelerate && car.Speed > -3 
+	tryToStopBackward := car.Speed < -0.3 
+
+	if moveFast {
 		car.Speed += car.Acceleration
-		_flag = true
-	} else if car.Speed > 0 {
+		forceStop = false
+	} else if tryToStop{
 		car.Speed -= car.Acceleration
-		_flag = true
-	}
-	if car.Decelerate && car.Speed > -3 {
-		car.Speed -= car.Acceleration
-		_flag = true
-	} else if car.Speed < -0.3 {
-		car.Speed += car.Acceleration
-		_flag = true
+		forceStop = false
 	}
 
-	if !_flag {
+	if moveBackward{
+		car.Speed -= car.Acceleration
+		forceStop = false
+	} else if tryToStopBackward{
+		car.Speed += car.Acceleration
+		forceStop = false
+	}
+
+	if forceStop {
 		car.Speed = 0
 	}
 	car.Pivot.X += car.Direction.X
