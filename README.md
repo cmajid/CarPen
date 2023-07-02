@@ -1,8 +1,11 @@
 # CarPen
 Mini Game: Park your car carefully!
-CarPen written in Go using [Ebiten](https://github.com/hajimehoshi/ebiten)
+CarPen wrote with GoLang using [Ebiten](https://github.com/hajimehoshi/ebiten)
 
 
+<p align="center">
+  <img width="300" height="300" src="./Screen_Shot.png">
+</p>
 
 ## Instructions
 
@@ -10,13 +13,8 @@ CarPen written in Go using [Ebiten](https://github.com/hajimehoshi/ebiten)
 2. Change directory to `CarPen/`: `cd CarPen/`
 3. Run `go run .` or run `go build` 
 
-Once window is open one can do the following:
+Once the window is open, one can do the following:
 
 * `[Arrow-Keys]` - Move the car
 
 Enjoy!
-
-![CarPen](https://github.com/cmajid/CarPen/blob/main/Screen_Shot.png?raw=true)
-
-
-Thanks to : https://codepen.io/tees/pen/KEdpEp
