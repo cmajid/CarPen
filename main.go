@@ -1,12 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
 	"log"
 	"math"
 
 	"github.com/cmajid/carpen/carpen"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
@@ -126,7 +128,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		opt.GeoM.Apply(b.Direction.X, b.Direction.Y)
 		screen.DrawImage(ebiten.NewImageFromImage(bushImage), opt)
 	}
-	//ebitenutil.DebugPrint(screen, fmt.Sprintf("TPS: %0.2f", ebiten.ActualTPS()))
+	ebitenutil.DebugPrint(screen, fmt.Sprintf("TPS: %0.2f", ebiten.ActualTPS()))
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
