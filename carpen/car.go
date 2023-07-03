@@ -33,15 +33,14 @@ type Car struct {
 	RearPivot      RearPivot
 	DirectionPivot DirectionPivot
 	RearPivotAbs   RearPivotAbs
-	TempDirPivot   TempDirPivot
 	Wheels         []Wheel
 	Direction      Direction
-	img 		   *ebiten.Image
+	Image          *ebiten.Image
 }
 
 func (c *Car) Init() {
 	var err error
-	c.img, _, err = ebitenutil.NewImageFromFile("car-yellow.png")
+	c.Image, _, err = ebitenutil.NewImageFromFile("car-yellow.png")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -59,7 +58,7 @@ func (car *Car) DrawCar() image.Image {
 	car.DrawWheels(dc)
 	dc.Translate(car.Pivot.X, car.Pivot.Y)
 	dc.Rotate(car.Rotation * math.Pi / 180)
-	dc.DrawImage(car.img, -60, -30)
+	dc.DrawImage(car.Image, -60, -30)
 	dc.Fill()
 	return dc.Image()
 }
@@ -93,33 +92,30 @@ func (car *Car) DrawWheels(dc *gg.Context) gg.Context {
 	car.DirectionPivot.X = 50*math.Cos((car.WheelAngle+car.Rotation-90)*math.Pi/180) + car.FrontPivot.X
 	car.DirectionPivot.Y = 50*math.Sin((car.WheelAngle+car.Rotation-90)*math.Pi/180) + car.FrontPivot.Y
 
-	car.TempDirPivot.X = 50*math.Cos((car.WheelAngle-90)*math.Pi/180) + car.FrontPivot.X
-	car.TempDirPivot.Y = 50*math.Sin((car.WheelAngle-90)*math.Pi/180) + car.FrontPivot.X
-
 	car.UpdateDirection()
 	return *dc
 }
 
 func (car *Car) Move() error {
-	
+
 	forceStop := true
 	moveFast := car.Accelerate && car.Speed < car.MaxSpeed
-	tryToStop := car.Speed > 0 
-	moveBackward := car.Decelerate && car.Speed > -3 
-	tryToStopBackward := car.Speed < -0.3 
+	tryToStop := car.Speed > 0
+	moveBackward := car.Decelerate && car.Speed > -3
+	tryToStopBackward := car.Speed < -0.3
 
 	if moveFast {
 		car.Speed += car.Acceleration
 		forceStop = false
-	} else if tryToStop{
+	} else if tryToStop {
 		car.Speed -= car.Acceleration
 		forceStop = false
 	}
 
-	if moveBackward{
+	if moveBackward {
 		car.Speed -= car.Acceleration
 		forceStop = false
-	} else if tryToStopBackward{
+	} else if tryToStopBackward {
 		car.Speed += car.Acceleration
 		forceStop = false
 	}
