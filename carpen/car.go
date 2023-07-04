@@ -11,6 +11,7 @@ import (
 )
 
 type Car struct {
+	IsActive bool
 	RotateLeft,
 	RotateRight,
 	Accelerate,
@@ -36,11 +37,12 @@ type Car struct {
 	Wheels         []Wheel
 	Direction      Direction
 	Image          *ebiten.Image
+	Color          string
 }
 
 func (c *Car) Init() {
 	var err error
-	c.Image, _, err = ebitenutil.NewImageFromFile("car-yellow.png")
+	c.Image, _, err = ebitenutil.NewImageFromFile("car-" + c.Color + ".png")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -64,6 +66,7 @@ func (car *Car) DrawCar() image.Image {
 }
 
 func (car *Car) DrawWheels(dc *gg.Context) gg.Context {
+
 	for i := 0; i < len(car.Wheels); i++ {
 		if car.RotateLeft {
 			if car.WheelAngle > -car.WheelMaxAngle {
@@ -89,6 +92,7 @@ func (car *Car) DrawWheels(dc *gg.Context) gg.Context {
 		dc.Pop()
 
 	}
+
 	car.DirectionPivot.X = 50*math.Cos((car.WheelAngle+car.Rotation-90)*math.Pi/180) + car.FrontPivot.X
 	car.DirectionPivot.Y = 50*math.Sin((car.WheelAngle+car.Rotation-90)*math.Pi/180) + car.FrontPivot.Y
 

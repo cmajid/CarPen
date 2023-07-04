@@ -13,16 +13,54 @@ import (
 )
 
 type Game struct {
-	car  carpen.Car
+	car  []carpen.Car
 	bush []carpen.Bush
 	Width,
-	Height int
+	Height,
+	ActiveCar int
 }
 
 func (g *Game) Init() {
 	g.Width = 640
 	g.Height = 480
-	g.car = carpen.Car{
+	g.ActiveCar = 0
+
+	// BUSH
+	bush1 := g.createBush(0, 0)
+	bush2 := g.createBush(100, 100)
+
+	g.bush = make([]carpen.Bush, 0)
+	g.bush = append(g.bush, bush1, bush2)
+
+	for i := 0; i < len(g.bush); i++ {
+		g.bush[i].Init()
+	}
+
+	// CAR
+	car1 := g.createCar("yellow", 400, 300, true)
+	car2 := g.createCar("red", 350, 100, false)
+	g.car = make([]carpen.Car, 0)
+	g.car = append(g.car, car1, car2)
+
+	for i := 0; i < len(g.car); i++ {
+		g.car[i].Init()
+
+		g.car[i].Pivot = carpen.Pivot{X: g.car[i].X + 50, Y: g.car[i].Y + 20}
+		g.car[i].DirectionPivot = carpen.DirectionPivot{X: g.car[i].FrontPivot.X, Y: g.car[i].FrontPivot.Y - 50}
+		g.car[i].RearPivotAbs = carpen.RearPivotAbs{
+			X: 160*math.Cos((g.car[i].Rotation+90)*math.Pi/180) + g.car[i].Pivot.X,
+			Y: 160*math.Sin((g.car[i].Rotation+90)*math.Pi/180) + g.car[i].Pivot.Y,
+		}
+
+		v1 := carpen.Vector{X: g.car[i].DirectionPivot.X - g.car[i].FrontPivot.X, Y: g.car[i].DirectionPivot.Y - g.car[i].FrontPivot.Y}
+		g.car[i].Direction = v1.Normalize()
+	}
+}
+
+func (g *Game) createCar(color string, x float64, y float64, active bool) carpen.Car {
+	car := carpen.Car{
+		Color:       color,
+		IsActive:    active,
 		RotateLeft:  false,
 		RotateRight: false,
 		Accelerate:  false,
@@ -36,8 +74,8 @@ func (g *Game) Init() {
 		WheelAngle:        0,
 		Width:             100,
 		Height:            200,
-		X:                 350,
-		Y:                 60,
+		X:                 x,
+		Y:                 y,
 		FrontPivot:        carpen.FrontPivot{X: 0, Y: 0},
 		RearPivot:         carpen.RearPivot{X: 0, Y: 160},
 		Rotation:          90,
@@ -50,27 +88,8 @@ func (g *Game) Init() {
 		Speed:        0,
 		Acceleration: 0.2,
 	}
-	g.car.Init()
 
-	bush1 := g.createBush(0, 0)
-	bush2 := g.createBush(100, 100)
-
-	g.bush = make([]carpen.Bush, 0)
-	g.bush = append(g.bush, bush1, bush2)
-
-	for i := 0; i < len(g.bush); i++ {
-		g.bush[i].Init()
-	}
-
-	g.car.Pivot = carpen.Pivot{X: g.car.X + 50, Y: g.car.Y + 20}
-	g.car.DirectionPivot = carpen.DirectionPivot{X: g.car.FrontPivot.X, Y: g.car.FrontPivot.Y - 50}
-	g.car.RearPivotAbs = carpen.RearPivotAbs{
-		X: 160*math.Cos((g.car.Rotation+90)*math.Pi/180) + g.car.Pivot.X,
-		Y: 160*math.Sin((g.car.Rotation+90)*math.Pi/180) + g.car.Pivot.Y,
-	}
-
-	v1 := carpen.Vector{X: g.car.DirectionPivot.X - g.car.FrontPivot.X, Y: g.car.DirectionPivot.Y - g.car.FrontPivot.Y}
-	g.car.Direction = v1.Normalize()
+	return car
 }
 
 func (*Game) createBush(x, y float64) carpen.Bush {
@@ -87,41 +106,51 @@ func (*Game) createBush(x, y float64) carpen.Bush {
 
 func (g *Game) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyUp) {
-		g.car.Accelerate = true
-		g.car.Speed += g.car.Acceleration
+		g.car[g.ActiveCar].Accelerate = true
+		g.car[g.ActiveCar].Speed += g.car[g.ActiveCar].Acceleration
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyDown) {
-		g.car.Decelerate = true
-		g.car.Speed -= g.car.Acceleration
+		g.car[g.ActiveCar].Decelerate = true
+		g.car[g.ActiveCar].Speed -= g.car[g.ActiveCar].Acceleration
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyLeft) {
-		g.car.RotateLeft = true
+		g.car[g.ActiveCar].RotateLeft = true
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyRight) {
-		g.car.RotateRight = true
+		g.car[g.ActiveCar].RotateRight = true
 	}
 
 	if inpututil.IsKeyJustReleased(ebiten.KeyUp) {
-		g.car.Accelerate = false
+		g.car[g.ActiveCar].Accelerate = false
 	}
 	if inpututil.IsKeyJustReleased(ebiten.KeyDown) {
-		g.car.Decelerate = false
+		g.car[g.ActiveCar].Decelerate = false
 	}
 	if inpututil.IsKeyJustReleased(ebiten.KeyRight) {
-		g.car.RotateRight = false
+		g.car[g.ActiveCar].RotateRight = false
 	}
 	if inpututil.IsKeyJustReleased(ebiten.KeyLeft) {
-		g.car.RotateLeft = false
+		g.car[g.ActiveCar].RotateLeft = false
 	}
+	if inpututil.IsKeyJustReleased(ebiten.KeyTab) {
+		if g.ActiveCar == 1 {
+			g.ActiveCar = 0
+		} else {
+			g.ActiveCar = 1
+		}
+	}
+
 	return nil
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.White)
-	g.car.Move()
-	img := g.car.DrawCar()
-	screen.DrawImage(ebiten.NewImageFromImage(img), &ebiten.DrawImageOptions{})
 
+	for i := 0; i < len(g.car); i++ {
+		g.car[i].Move()
+		img := g.car[i].DrawCar()
+		screen.DrawImage(ebiten.NewImageFromImage(img), &ebiten.DrawImageOptions{})
+	}
 	for _, b := range g.bush {
 		bushImage := b.DrawBush()
 		opt := &ebiten.DrawImageOptions{}
