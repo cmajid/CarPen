@@ -37,8 +37,8 @@ func (g *Game) Init() {
 	}
 
 	// CAR
-	car1 := g.createCar("yellow", 400, 300, true)
-	car2 := g.createCar("red", 350, 100, false)
+	car1 := g.createCar("yellow", 400, 300, 0, true)
+	car2 := g.createCar("red", 350, 100, 90, false)
 	g.car = make([]carpen.Car, 0)
 	g.car = append(g.car, car1, car2)
 
@@ -57,7 +57,7 @@ func (g *Game) Init() {
 	}
 }
 
-func (g *Game) createCar(color string, x float64, y float64, active bool) carpen.Car {
+func (g *Game) createCar(color string, x float64, y float64, rotate float64, active bool) carpen.Car {
 	car := carpen.Car{
 		Color:       color,
 		IsActive:    active,
@@ -78,14 +78,14 @@ func (g *Game) createCar(color string, x float64, y float64, active bool) carpen
 		Y:                 y,
 		FrontPivot:        carpen.FrontPivot{X: 0, Y: 0},
 		RearPivot:         carpen.RearPivot{X: 0, Y: 160},
-		Rotation:          90,
+		Rotation:          rotate,
 		Wheels: []carpen.Wheel{
 			{X: -40, Y: 10},
 			{X: 45, Y: 10},
 			{X: -41, Y: 145},
 			{X: 46, Y: 145},
 		},
-		Speed:        0,
+		Speed:        5,
 		Acceleration: 0.2,
 	}
 
