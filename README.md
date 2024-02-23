@@ -4,7 +4,7 @@ CarPen wrote with GoLang using [Ebiten](https://github.com/hajimehoshi/ebiten)
 
 
 <p align="center">
-  <img width="300" height="300" src="./Screen_Shot.png">
+  <img width="350" height="300" src="./Screen_Shot.png">
 </p>
 
 ## Instructions
