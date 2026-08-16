@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"image/color"
 	"log"
-	"math"
 
 	"github.com/cmajid/carpen/carpen"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -47,10 +46,7 @@ func (g *Game) Init() {
 
 		g.car[i].Pivot = carpen.Pivot{X: g.car[i].X + 50, Y: g.car[i].Y + 20}
 		g.car[i].DirectionPivot = carpen.DirectionPivot{X: g.car[i].FrontPivot.X, Y: g.car[i].FrontPivot.Y - 50}
-		g.car[i].RearPivotAbs = carpen.RearPivotAbs{
-			X: 160*math.Cos((g.car[i].Rotation+90)*math.Pi/180) + g.car[i].Pivot.X,
-			Y: 160*math.Sin((g.car[i].Rotation+90)*math.Pi/180) + g.car[i].Pivot.Y,
-		}
+		g.car[i].UpdateRearPivotAbs()
 
 		v1 := carpen.Vector{X: g.car[i].DirectionPivot.X - g.car[i].FrontPivot.X, Y: g.car[i].DirectionPivot.Y - g.car[i].FrontPivot.Y}
 		g.car[i].Direction = v1.Normalize()
@@ -72,8 +68,6 @@ func (g *Game) createCar(color string, x float64, y float64, rotate float64, act
 		WheelRotationStep: 2.4, // degrees of steering per tick (Ebiten runs 60 ticks/second)
 		WheelMaxAngle:     45,
 		WheelAngle:        0,
-		Width:             100,
-		Height:            200,
 		X:                 x,
 		Y:                 y,
 		FrontPivot:        carpen.FrontPivot{X: 0, Y: 0},
@@ -94,8 +88,6 @@ func (g *Game) createCar(color string, x float64, y float64, rotate float64, act
 
 func (*Game) createBush(x, y float64) carpen.Bush {
 	bush2 := carpen.Bush{
-		Width:  109,
-		Height: 109,
 		Direction: carpen.Direction{
 			X: x,
 			Y: y,
@@ -142,9 +134,7 @@ func (g *Game) Update() error {
 	}
 
 	for i := 0; i < len(g.car); i++ {
-		if err := g.car[i].Update(); err != nil {
-			return err
-		}
+		g.car[i].Update()
 	}
 
 	return nil

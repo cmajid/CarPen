@@ -10,8 +10,6 @@ import (
 
 type Bush struct {
 	Rotation float64
-	Width,
-	Height int
 
 	Direction Direction
 	Image     *ebiten.Image

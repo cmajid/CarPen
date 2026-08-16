@@ -15,8 +15,6 @@ func newTestCar() *Car {
 		WheelHeight:       30,
 		WheelRotationStep: 2.4,
 		WheelMaxAngle:     45,
-		Width:             100,
-		Height:            200,
 		X:                 400,
 		Y:                 300,
 		RearPivot:         RearPivot{X: 0, Y: 160},
@@ -31,10 +29,7 @@ func newTestCar() *Car {
 	}
 	c.Pivot = Pivot{X: c.X + 50, Y: c.Y + 20}
 	c.DirectionPivot = DirectionPivot{X: c.FrontPivot.X, Y: c.FrontPivot.Y - 50}
-	c.RearPivotAbs = RearPivotAbs{
-		X: 160*math.Cos((c.Rotation+90)*math.Pi/180) + c.Pivot.X,
-		Y: 160*math.Sin((c.Rotation+90)*math.Pi/180) + c.Pivot.Y,
-	}
+	c.UpdateRearPivotAbs()
 	v := Vector{X: c.DirectionPivot.X - c.FrontPivot.X, Y: c.DirectionPivot.Y - c.FrontPivot.Y}
 	c.Direction = v.Normalize()
 	return c
@@ -44,9 +39,7 @@ func TestUpdateStepsWheelAngleOncePerTick(t *testing.T) {
 	c := newTestCar()
 	c.RotateLeft = true
 
-	if err := c.Update(); err != nil {
-		t.Fatalf("Update() returned %v", err)
-	}
+	c.Update()
 
 	if got, want := c.WheelAngle, -c.WheelRotationStep; got != want {
 		t.Errorf("WheelAngle after one tick = %v, want %v", got, want)
@@ -82,12 +75,25 @@ func TestMoveAdvancesPivot(t *testing.T) {
 	c := newTestCar()
 	before := c.Pivot
 
-	if err := c.Move(); err != nil {
-		t.Fatalf("Move() returned %v", err)
-	}
+	c.Move()
 
 	if c.Pivot == before {
 		t.Errorf("Pivot did not move: still %v", c.Pivot)
+	}
+}
+
+// RearPivot is the rear axle's offset in the car's own frame, so the axle's
+// place on screen has to follow the car's rotation about the pivot.
+func TestUpdateRearPivotAbsTurnsWithTheCar(t *testing.T) {
+	c := newTestCar()
+	c.Rotation = 30
+	c.UpdateRearPivotAbs()
+
+	wantX, wantY := rotate(c.RearPivot.X, c.RearPivot.Y, c.Rotation)
+	wantX, wantY = wantX+c.Pivot.X, wantY+c.Pivot.Y
+
+	if !closeTo(c.RearPivotAbs.X, wantX) || !closeTo(c.RearPivotAbs.Y, wantY) {
+		t.Errorf("rear axle at (%v, %v), want (%v, %v)", c.RearPivotAbs.X, c.RearPivotAbs.Y, wantX, wantY)
 	}
 }
 
