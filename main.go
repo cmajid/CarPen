@@ -69,7 +69,7 @@ func (g *Game) createCar(color string, x float64, y float64, rotate float64, act
 		MaxSpeed:          6,
 		WheelWidth:        12,
 		WheelHeight:       30,
-		WheelRotationStep: 0.6,
+		WheelRotationStep: 2.4, // degrees of steering per tick (Ebiten runs 60 ticks/second)
 		WheelMaxAngle:     45,
 		WheelAngle:        0,
 		Width:             100,
@@ -140,6 +140,12 @@ func (g *Game) Update() error {
 		}
 	}
 
+	for i := 0; i < len(g.car); i++ {
+		if err := g.car[i].Update(); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -147,7 +153,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.White)
 
 	for i := 0; i < len(g.car); i++ {
-		g.car[i].Move()
 		img := g.car[i].DrawCar()
 		screen.DrawImage(ebiten.NewImageFromImage(img), &ebiten.DrawImageOptions{})
 	}
