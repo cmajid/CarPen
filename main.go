@@ -157,11 +157,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		img := g.car[i].DrawCar()
 		screen.DrawImage(ebiten.NewImageFromImage(img), &ebiten.DrawImageOptions{})
 	}
-	for _, b := range g.bush {
-		bushImage := b.DrawBush()
-		opt := &ebiten.DrawImageOptions{}
-		opt.GeoM.Apply(b.Direction.X, b.Direction.Y)
-		screen.DrawImage(ebiten.NewImageFromImage(bushImage), opt)
+	for i := 0; i < len(g.bush); i++ {
+		g.bush[i].Draw(screen)
 	}
 	ebitenutil.DebugPrint(screen, fmt.Sprintf("TPS: %0.2f", ebiten.ActualTPS()))
 }

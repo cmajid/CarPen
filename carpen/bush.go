@@ -1,11 +1,9 @@
 package carpen
 
 import (
-	"image"
 	"log"
 	"math"
 
-	"github.com/fogleman/gg"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
@@ -27,11 +25,11 @@ func (b *Bush) Init() {
 	}
 }
 
-func (bush *Bush) DrawBush() image.Image {
-	dc := gg.NewContext(640, 480)
-	dc.Translate(bush.Direction.X, bush.Direction.Y)
-	dc.Rotate(bush.Rotation * math.Pi / 180)
-	dc.DrawImage(bush.Image, 0, 0)
-	dc.Fill()
-	return dc.Image()
+// Draw blits the bush onto screen. Direction is the bush's position on screen
+// and is applied here, so this is the only place the bush is positioned.
+func (bush *Bush) Draw(screen *ebiten.Image) {
+	opt := &ebiten.DrawImageOptions{}
+	opt.GeoM.Rotate(bush.Rotation * math.Pi / 180)
+	opt.GeoM.Translate(bush.Direction.X, bush.Direction.Y)
+	screen.DrawImage(bush.Image, opt)
 }
