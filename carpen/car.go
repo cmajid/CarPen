@@ -2,11 +2,9 @@ package carpen
 
 import (
 	"image/color"
-	"log"
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 type Car struct {
@@ -42,11 +40,7 @@ type Car struct {
 }
 
 func (c *Car) Init() {
-	var err error
-	c.Image, _, err = ebitenutil.NewImageFromFileSystem(assets, "assets/car-"+c.Color+".png")
-	if err != nil {
-		log.Fatal(err)
-	}
+	c.Image = CarImage(c.Color)
 
 	c.wheelImage = ebiten.NewImage(c.WheelWidth, c.WheelHeight)
 	c.wheelImage.Fill(color.Black)

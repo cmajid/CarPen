@@ -5,13 +5,20 @@ description: Map of CarPen's packages, physics model, and code conventions. Read
 
 # CarPen architecture
 
-Module `github.com/cmajid/carpen`, two packages: `main` (game loop, world setup) and `carpen` (entities, math). Ebitengine v2 is the only direct dependency.
+Module `github.com/cmajid/carpen`, three packages: `main` (window wiring only), `scene` (the screens and the manager that switches them) and `carpen` (entities, math). Direct dependencies are Ebitengine v2 and `golang.org/x/image` (the Go fonts the menus are set in — Ebitengine requires it anyway).
 
 ## File map
 
 | File | Owns |
 |---|---|
-| `main.go` | `ebiten.Game` impl. `Init()` hardcodes the world (2 cars, 2 bushes — becomes level data per issue #19). `Update()` maps keys to intent flags on the active car; Tab switches `ActiveCar`. `Layout` is fixed 640×480. |
+| `main.go` | Nothing but window setup: builds a `scene.Manager` on `scene.NewMenu` and hands it to `ebiten.RunGame`. Game logic does not belong here. |
+| `scene/scene.go` | `Scene` interface (`Update() (next Scene, err error)`) and the `Input` seam (keyboard **and** mouse, so menus are testable without a window). |
+| `scene/manager.go` | `Manager`: the `ebiten.Game` impl, fixed 640×480 `Layout`, and the scene switch. |
+| `scene/ui.go` | The design system every screen draws from: palette, type scale (Go fonts via `text/v2`), panels, the bottom prompt bar, scene fade. Change a colour or size **here**, not in a screen. |
+| `scene/menulist.go` | `menuList`, the one focusable list all menus are built from: wraps at both ends, keyboard + mouse, focus shown by shape and weight as well as colour. |
+| `scene/gameplay.go` | The race. Builds the world (2 cars, 2 bushes — becomes level data per issue #19) and maps keys to intent flags on the active car; Tab switches `activeCar`. |
+| `scene/menu.go`, `scene/pause.go`, `scene/results.go` | The three menu screens. Each is a heading, a `menuList`, and a row of prompts; pause holds the live `*Gameplay` so resuming keeps its state. |
+| `scene/scene_test.go`, `scene/menulist_test.go` | Scene switching, pause behaviour, input mapping, and list navigation tests. |
 | `carpen/car.go` | `Car` struct, physics, and drawing. The only file with nontrivial logic. |
 | `carpen/vector.go` | `Vector` with `Length`/`Normalize`. `Normalize` returns zero for a zero vector — a deliberate NaN guard; a NaN here would spread to position and never leave. |
 | `carpen/pivot.go`, `carpen/wheel.go` | Plain `{X, Y}` position structs (`Pivot`, `FrontPivot`, `RearPivot`, `RearPivotAbs`, `DirectionPivot`, `Direction`, `Wheel`). |

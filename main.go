@@ -1,168 +1,23 @@
 package main
 
 import (
-	"fmt"
-	"image/color"
 	"log"
 
-	"github.com/cmajid/carpen/carpen"
+	"github.com/cmajid/carpen/scene"
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
-type Game struct {
-	car  []carpen.Car
-	bush []carpen.Bush
-	Width,
-	Height,
-	ActiveCar int
-}
-
-func (g *Game) Init() {
-	g.Width = 640
-	g.Height = 480
-	g.ActiveCar = 0
-
-	// BUSH
-	bush1 := g.createBush(0, 0)
-	bush2 := g.createBush(100, 100)
-
-	g.bush = make([]carpen.Bush, 0)
-	g.bush = append(g.bush, bush1, bush2)
-
-	for i := 0; i < len(g.bush); i++ {
-		g.bush[i].Init()
-	}
-
-	// CAR
-	car1 := g.createCar("yellow", 400, 300, 0, true)
-	car2 := g.createCar("red", 350, 100, 90, false)
-	g.car = make([]carpen.Car, 0)
-	g.car = append(g.car, car1, car2)
-
-	for i := 0; i < len(g.car); i++ {
-		g.car[i].Init()
-
-		g.car[i].Pivot = carpen.Pivot{X: g.car[i].X + 50, Y: g.car[i].Y + 20}
-		g.car[i].DirectionPivot = carpen.DirectionPivot{X: g.car[i].FrontPivot.X, Y: g.car[i].FrontPivot.Y - 50}
-		g.car[i].UpdateRearPivotAbs()
-
-		v1 := carpen.Vector{X: g.car[i].DirectionPivot.X - g.car[i].FrontPivot.X, Y: g.car[i].DirectionPivot.Y - g.car[i].FrontPivot.Y}
-		g.car[i].Direction = v1.Normalize()
-	}
-}
-
-func (g *Game) createCar(color string, x float64, y float64, rotate float64, active bool) carpen.Car {
-	car := carpen.Car{
-		Color:       color,
-		IsActive:    active,
-		RotateLeft:  false,
-		RotateRight: false,
-		Accelerate:  false,
-		Decelerate:  false,
-
-		MaxSpeed:          6,
-		WheelWidth:        12,
-		WheelHeight:       30,
-		WheelRotationStep: 2.4, // degrees of steering per tick (Ebiten runs 60 ticks/second)
-		WheelMaxAngle:     45,
-		WheelAngle:        0,
-		X:                 x,
-		Y:                 y,
-		FrontPivot:        carpen.FrontPivot{X: 0, Y: 0},
-		RearPivot:         carpen.RearPivot{X: 0, Y: 160},
-		Rotation:          rotate,
-		Wheels: []carpen.Wheel{
-			{X: -40, Y: 10},
-			{X: 45, Y: 10},
-			{X: -41, Y: 145},
-			{X: 46, Y: 145},
-		},
-		Speed:        5,
-		Acceleration: 0.2,
-	}
-
-	return car
-}
-
-func (*Game) createBush(x, y float64) carpen.Bush {
-	bush2 := carpen.Bush{
-		Direction: carpen.Direction{
-			X: x,
-			Y: y,
-		},
-	}
-	return bush2
-}
-
-func (g *Game) Update() error {
-	// The key handlers only record intent; every change to Speed is made by
-	// Car.Move(), which is the one place that honours MaxSpeed and the reverse
-	// limit.
-	if inpututil.IsKeyJustPressed(ebiten.KeyUp) {
-		g.car[g.ActiveCar].Accelerate = true
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyDown) {
-		g.car[g.ActiveCar].Decelerate = true
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyLeft) {
-		g.car[g.ActiveCar].RotateLeft = true
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyRight) {
-		g.car[g.ActiveCar].RotateRight = true
-	}
-
-	if inpututil.IsKeyJustReleased(ebiten.KeyUp) {
-		g.car[g.ActiveCar].Accelerate = false
-	}
-	if inpututil.IsKeyJustReleased(ebiten.KeyDown) {
-		g.car[g.ActiveCar].Decelerate = false
-	}
-	if inpututil.IsKeyJustReleased(ebiten.KeyRight) {
-		g.car[g.ActiveCar].RotateRight = false
-	}
-	if inpututil.IsKeyJustReleased(ebiten.KeyLeft) {
-		g.car[g.ActiveCar].RotateLeft = false
-	}
-	if inpututil.IsKeyJustReleased(ebiten.KeyTab) {
-		if g.ActiveCar == 1 {
-			g.ActiveCar = 0
-		} else {
-			g.ActiveCar = 1
-		}
-	}
-
-	for i := 0; i < len(g.car); i++ {
-		g.car[i].Update()
-	}
-
-	return nil
-}
-
-func (g *Game) Draw(screen *ebiten.Image) {
-	screen.Fill(color.White)
-
-	for i := 0; i < len(g.car); i++ {
-		g.car[i].DrawCar(screen)
-	}
-	for i := 0; i < len(g.bush); i++ {
-		g.bush[i].Draw(screen)
-	}
-	ebitenutil.DebugPrint(screen, fmt.Sprintf("TPS: %0.2f", ebiten.ActualTPS()))
-}
-
-func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
-	return g.Width, g.Height
-}
+const (
+	screenWidth  = 640
+	screenHeight = 480
+)
 
 func main() {
-	g := &Game{}
-	g.Init()
+	game := scene.NewManager(screenWidth, screenHeight, scene.NewMenu(scene.Keyboard{}))
 
-	ebiten.SetWindowSize(g.Width, g.Height)
+	ebiten.SetWindowSize(screenWidth, screenHeight)
 	ebiten.SetWindowTitle("Car Pen")
-	if err := ebiten.RunGame(g); err != nil {
+	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
 	}
 }
