@@ -29,6 +29,7 @@ var (
 	colourAccentInk = color.RGBA{R: 0x14, G: 0x18, B: 0x1f, A: 0xff} // text written on top of the accent
 	colourLine      = color.RGBA{R: 0x2a, G: 0x35, B: 0x42, A: 0xff}
 	colourBay       = color.RGBA{R: 0x8a, G: 0x96, B: 0xa4, A: 0xff} // the bay painted on the lot, which is a pale ground
+	colourDanger    = color.RGBA{R: 0xe5, G: 0x4b, B: 0x4b, A: 0xff} // a box the moment it is overlapping, on the F3 overlay
 
 	// Both of these are drawn over something else, so they are written with
 	// their alpha already folded in: Go's RGBA is alpha-premultiplied.
@@ -83,6 +84,12 @@ func fillRect(dst *ebiten.Image, x, y, width, height float64, colour color.Color
 // turn to any angle.
 func strokeLine(dst *ebiten.Image, from, to carpen.Vector, width float64, colour color.Color) {
 	vector.StrokeLine(dst, float32(from.X), float32(from.Y), float32(to.X), float32(to.Y), float32(width), colour, true)
+}
+
+// strokeCircle draws a circle's outline, antialiased like strokeLine — the F3
+// overlay draws the bushes' round colliders with it.
+func strokeCircle(dst *ebiten.Image, centre carpen.Vector, radius, width float64, colour color.Color) {
+	vector.StrokeCircle(dst, float32(centre.X), float32(centre.Y), float32(radius), float32(width), colour, true)
 }
 
 // drawPanel draws a card with a line of accent along its top edge, the shape the

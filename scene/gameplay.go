@@ -15,8 +15,36 @@ type Gameplay struct {
 	level     carpen.Level
 	cars      []carpen.Car
 	bushes    []carpen.Bush
+	walls     []*carpen.OBB
 	activeCar int
 	fade      fade
+
+	// OnCollision is the rules layer's ear. Detection only raises the event;
+	// whatever is plugged in here decides what a crash means, so no game-over
+	// lives anywhere near the collision code.
+	OnCollision func(carpen.CollisionEvent)
+
+	// crash is the last collision the default rules recorded, shown on the
+	// HUD. It stands in for the attempt-failure rule the epic plans (#17),
+	// the same way Enter stands in for the win condition.
+	crash *carpen.CollisionEvent
+
+	// colliding remembers whether the active car was already touching
+	// something last tick, so OnCollision fires once when a crash starts
+	// rather than every tick the car sits overlapping. It is seeded with the
+	// spawn state, because a crash is running into something: a level that
+	// places the car already overlapping (level-01 hangs its rear over the
+	// bottom edge) is not a crash the player made.
+	colliding bool
+
+	// touching is what the active car is overlapping right now — empty when
+	// it is clear. Where crash remembers the first collision the way the
+	// rules will, this is the live truth of this tick, and it is what the F3
+	// overlay paints red and names in its status line.
+	touching carpen.Obstruction
+
+	// debugOBB, toggled with F3, outlines every box collision sees.
+	debugOBB bool
 }
 
 // newGameplay lays out a fresh world from a level. Nothing about where things
@@ -42,6 +70,9 @@ func newGameplay(in Input, level carpen.Level) *Gameplay {
 		g.bushes[i].Init()
 	}
 
+	g.walls = lotWalls(level.Lot)
+	g.OnCollision = func(event carpen.CollisionEvent) { g.crash = &event }
+
 	for i := range g.cars {
 		g.cars[i].Init()
 
@@ -52,6 +83,9 @@ func newGameplay(in Input, level carpen.Level) *Gameplay {
 		v1 := carpen.Vector{X: g.cars[i].DirectionPivot.X - g.cars[i].FrontPivot.X, Y: g.cars[i].DirectionPivot.Y - g.cars[i].FrontPivot.Y}
 		g.cars[i].Direction = v1.Normalize()
 	}
+
+	event, hit := g.findCollision()
+	g.colliding, g.touching = hit, event.Obstruction
 
 	return g
 }
@@ -97,6 +131,22 @@ func newBush(x, y float64) carpen.Bush {
 		},
 	}
 	return bush
+}
+
+// lotWalls closes the lot in: four boxes pressed against the outside of its
+// edges, so driving off any side is a collision like any other. They are far
+// thicker than the longest step a car can take in a tick (MaxSpeed is 6), so
+// a car can never jump one between two checks.
+func lotWalls(lot carpen.Lot) []*carpen.OBB {
+	const thickness = 100.0
+	w, h := lot.Width, lot.Height
+
+	return []*carpen.OBB{
+		carpen.NewOBB(w/2, -thickness/2, w+2*thickness, thickness, 0),  // top
+		carpen.NewOBB(w/2, h+thickness/2, w+2*thickness, thickness, 0), // bottom
+		carpen.NewOBB(-thickness/2, h/2, thickness, h+2*thickness, 0),  // left
+		carpen.NewOBB(w+thickness/2, h/2, thickness, h+2*thickness, 0), // right
+	}
 }
 
 func (g *Gameplay) Update() (Scene, error) {
@@ -147,11 +197,54 @@ func (g *Gameplay) Update() (Scene, error) {
 		g.activeCar = (g.activeCar + 1) % len(g.cars)
 	}
 
+	if g.in.IsKeyJustPressed(ebiten.KeyF3) {
+		g.debugOBB = !g.debugOBB
+	}
+
 	for i := range g.cars {
 		g.cars[i].Update()
 	}
 
+	// Collision is looked for after every car has taken its step, so a crash
+	// is raised in the very tick the boxes first meet. The event only fires on
+	// the tick a crash starts; the rules decide what it means from there.
+	event, hit := g.findCollision()
+	if hit && !g.colliding && g.OnCollision != nil {
+		g.OnCollision(event)
+	}
+	g.colliding = hit
+	g.touching = event.Obstruction
+
 	return nil, nil
+}
+
+// findCollision reports the first thing the active car is overlapping: a wall,
+// a bush, or another car. Only the active car is checked — everything else
+// stands still, and things that stand still do not run into each other. At
+// this handful of boxes, checking each in turn is the whole broad phase.
+func (g *Gameplay) findCollision() (carpen.CollisionEvent, bool) {
+	active := g.cars[g.activeCar].OBB()
+
+	for _, wall := range g.walls {
+		if carpen.Intersects(active, wall) {
+			return carpen.CollisionEvent{Obstruction: carpen.ObstructionWall}, true
+		}
+	}
+	for i := range g.bushes {
+		if g.bushes[i].Collider().IntersectsOBB(active) {
+			return carpen.CollisionEvent{Obstruction: carpen.ObstructionBush}, true
+		}
+	}
+	for i := range g.cars {
+		if i == g.activeCar {
+			continue
+		}
+		if carpen.Intersects(active, g.cars[i].OBB()) {
+			return carpen.CollisionEvent{Obstruction: carpen.ObstructionCar}, true
+		}
+	}
+
+	return carpen.CollisionEvent{}, false
 }
 
 func (g *Gameplay) Draw(screen *ebiten.Image) {
@@ -170,8 +263,65 @@ func (g *Gameplay) Draw(screen *ebiten.Image) {
 		g.bushes[i].Draw(screen)
 	}
 
+	if g.debugOBB {
+		g.drawOBBs(screen)
+	}
+
 	g.drawHUD(screen)
 	g.fade.draw(screen)
+}
+
+// drawOBBs outlines every box collision sees — the development overlay behind
+// F3. The active car's box turns red for exactly the ticks it overlaps
+// something, so a clipped corner is seen the moment it happens rather than
+// found later in the crash notice. Reading an entity's OBB() re-places its box
+// but steps no physics, so drawing it here breaks nothing about the fixed
+// tick rate.
+func (g *Gameplay) drawOBBs(screen *ebiten.Image) {
+	for i := range g.cars {
+		colour := colourAccent
+		if i == g.activeCar && g.touching != "" {
+			colour = colourDanger
+		}
+		strokeOBB(screen, g.cars[i].OBB(), colour)
+	}
+	for i := range g.bushes {
+		circle := g.bushes[i].Collider()
+		strokeCircle(screen, circle.Center(), circle.Radius(), 2, colourAccent)
+	}
+	for _, wall := range g.walls {
+		strokeOBB(screen, wall, colourBay)
+	}
+
+	g.drawDebugStatus(screen)
+}
+
+// drawDebugStatus writes the active car's live numbers, and what its box is
+// overlapping this very tick, on a strip along the bottom. This is the truth
+// of now, where the crash notice is the memory of the first hit — the pair is
+// what tells "I am touching it" apart from "I touched it once, back then".
+func (g *Gameplay) drawDebugStatus(screen *ebiten.Image) {
+	car := &g.cars[g.activeCar]
+
+	status, colour := "clear", colourText
+	if g.touching != "" {
+		status, colour = "touching "+string(g.touching), colourDanger
+	}
+
+	width := float64(screen.Bounds().Dx())
+	bottom := float64(screen.Bounds().Dy())
+	fillRect(screen, 0, bottom-22, width, 22, colourHUD)
+	drawText(screen,
+		fmt.Sprintf("pivot %.0f, %.0f    rotation %.0f    speed %.1f    %s",
+			car.Pivot.X, car.Pivot.Y, car.Rotation, car.Speed, status),
+		fontPrompt, 14, bottom-11, colour, text.AlignStart, text.AlignCenter)
+}
+
+func strokeOBB(dst *ebiten.Image, obb *carpen.OBB, colour color.Color) {
+	outline := obb.Outline()
+	for i := range outline {
+		strokeLine(dst, outline[i], outline[(i+1)%len(outline)], 2, colour)
+	}
 }
 
 // drawBay marks out the space the level asks the player to park in: the two
@@ -198,8 +348,17 @@ func (g *Gameplay) drawHUD(screen *ebiten.Image) {
 	drawText(screen, "Tab  Swap car", fontPrompt, 116, 13, colourTextMuted, text.AlignStart, text.AlignCenter)
 	drawText(screen, "Enter  Finish", fontPrompt, 218, 13, colourTextMuted, text.AlignStart, text.AlignCenter)
 	drawText(screen, "Esc  Pause", fontPrompt, 320, 13, colourAccent, text.AlignStart, text.AlignCenter)
+	drawText(screen, "F3  Boxes", fontPrompt, 414, 13, colourTextMuted, text.AlignStart, text.AlignCenter)
 
 	drawText(screen, fmt.Sprintf("%0.0f TPS", ebiten.ActualTPS()), fontPrompt, float64(screen.Bounds().Dx())-14, 13, colourTextMuted, text.AlignEnd, text.AlignCenter)
+
+	// The crash notice is the default rules showing they heard the collision
+	// event. Once a crash fails the attempt (#17), this strip goes and the
+	// results screen says it instead.
+	if g.crash != nil {
+		fillRect(screen, 0, 26, float64(screen.Bounds().Dx()), 22, colourHUD)
+		drawText(screen, fmt.Sprintf("Crashed into a %s", g.crash.Obstruction), fontPrompt, 14, 37, colourAccent, text.AlignStart, text.AlignCenter)
+	}
 }
 
 // releaseControls lets go of every key the player was holding. Driving is worked
