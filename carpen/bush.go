@@ -13,6 +13,12 @@ type Bush struct {
 
 	Direction Direction
 	Image     *ebiten.Image
+
+	// width and height are the sprite's size, kept as numbers so the OBB can
+	// be worked out without asking the image; the obb itself is built once and
+	// re-placed on every OBB() call.
+	width, height float64
+	obb           *OBB
 }
 
 func (b *Bush) Init() {
@@ -21,6 +27,25 @@ func (b *Bush) Init() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	b.width = float64(b.Image.Bounds().Dx())
+	b.height = float64(b.Image.Bounds().Dy())
+}
+
+// OBB returns the bush's oriented bounding box. The sprite is drawn from its
+// top-left corner at Direction and turned about that corner (see Draw), so the
+// centre is half the sprite away from Direction, turned by Rotation.
+func (bush *Bush) OBB() *OBB {
+	sin, cos := math.Sincos(bush.Rotation * math.Pi / 180)
+	dx := bush.width / 2
+	dy := bush.height / 2
+	centerX := dx*cos - dy*sin + bush.Direction.X
+	centerY := dx*sin + dy*cos + bush.Direction.Y
+
+	if bush.obb == nil {
+		bush.obb = NewOBB(centerX, centerY, bush.width, bush.height, bush.Rotation)
+	}
+	bush.obb.SetTransform(centerX, centerY, bush.Rotation)
+	return bush.obb
 }
 
 // Draw blits the bush onto screen. Direction is the bush's position on screen

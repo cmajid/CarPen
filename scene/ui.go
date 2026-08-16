@@ -29,6 +29,7 @@ var (
 	colourAccentInk = color.RGBA{R: 0x14, G: 0x18, B: 0x1f, A: 0xff} // text written on top of the accent
 	colourLine      = color.RGBA{R: 0x2a, G: 0x35, B: 0x42, A: 0xff}
 	colourBay       = color.RGBA{R: 0x8a, G: 0x96, B: 0xa4, A: 0xff} // the bay painted on the lot, which is a pale ground
+	colourDanger    = color.RGBA{R: 0xe5, G: 0x4b, B: 0x4b, A: 0xff} // a box the moment it is overlapping, on the F3 overlay
 
 	// Both of these are drawn over something else, so they are written with
 	// their alpha already folded in: Go's RGBA is alpha-premultiplied.

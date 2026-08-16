@@ -37,10 +37,18 @@ type Car struct {
 	// wheelImage is the black rectangle every wheel is drawn from. It is built
 	// once in Init() and reused for all four wheels of every frame.
 	wheelImage *ebiten.Image
+
+	// bodyWidth and bodyHeight are the body sprite's size, kept as numbers so
+	// the OBB can be worked out without asking the image, and the obb itself
+	// is built once and re-placed on every OBB() call.
+	bodyWidth, bodyHeight float64
+	obb                   *OBB
 }
 
 func (c *Car) Init() {
 	c.Image = CarImage(c.Color)
+	c.bodyWidth = float64(c.Image.Bounds().Dx())
+	c.bodyHeight = float64(c.Image.Bounds().Dy())
 
 	c.wheelImage = ebiten.NewImage(c.WheelWidth, c.WheelHeight)
 	c.wheelImage.Fill(color.Black)
@@ -125,6 +133,24 @@ func (car *Car) wheelGeoM(i int) ebiten.GeoM {
 	g.Rotate(car.Rotation * math.Pi / 180)
 	g.Translate(car.Pivot.X, car.Pivot.Y)
 	return g
+}
+
+// OBB returns the car's oriented bounding box: the body sprite's footprint on
+// the lot, turned with the car. The sprite hangs (-60, -30) from the pivot in
+// the car's own frame (see bodyGeoM), so its centre sits at that offset plus
+// half the sprite, turned by Rotation and placed at the pivot.
+func (car *Car) OBB() *OBB {
+	sin, cos := math.Sincos(car.Rotation * math.Pi / 180)
+	dx := car.bodyWidth/2 - 60
+	dy := car.bodyHeight/2 - 30
+	centerX := dx*cos - dy*sin + car.Pivot.X
+	centerY := dx*sin + dy*cos + car.Pivot.Y
+
+	if car.obb == nil {
+		car.obb = NewOBB(centerX, centerY, car.bodyWidth, car.bodyHeight, car.Rotation)
+	}
+	car.obb.SetTransform(centerX, centerY, car.Rotation)
+	return car.obb
 }
 
 // UpdateRearPivotAbs recomputes where the rear axle sits on screen: RearPivot is
