@@ -55,6 +55,34 @@ func (c *Car) UpdateDirection() {
 	c.Direction.Y *= c.Speed
 }
 
+// Update advances the car by one simulation tick. It must be called from the
+// game's Update(), which Ebiten runs at a fixed tick rate; calling it from the
+// draw path would tie the car's speed and steering to the display's refresh
+// rate.
+func (car *Car) Update() error {
+	if err := car.Move(); err != nil {
+		return err
+	}
+	car.Steer()
+	return nil
+}
+
+// Steer advances the front wheels towards the angle the player is asking for
+// and recomputes the direction the car travels in.
+func (car *Car) Steer() {
+	if car.RotateLeft && car.WheelAngle > -car.WheelMaxAngle {
+		car.WheelAngle = math.Max(car.WheelAngle-car.WheelRotationStep, -car.WheelMaxAngle)
+	}
+	if car.RotateRight && car.WheelAngle < car.WheelMaxAngle {
+		car.WheelAngle = math.Min(car.WheelAngle+car.WheelRotationStep, car.WheelMaxAngle)
+	}
+
+	car.DirectionPivot.X = 50*math.Cos((car.WheelAngle+car.Rotation-90)*math.Pi/180) + car.FrontPivot.X
+	car.DirectionPivot.Y = 50*math.Sin((car.WheelAngle+car.Rotation-90)*math.Pi/180) + car.FrontPivot.Y
+
+	car.UpdateDirection()
+}
+
 func (car *Car) DrawCar() image.Image {
 	dc := gg.NewContext(640, 480)
 	car.DrawWheels(dc)
@@ -65,19 +93,10 @@ func (car *Car) DrawCar() image.Image {
 	return dc.Image()
 }
 
-func (car *Car) DrawWheels(dc *gg.Context) gg.Context {
-
+// DrawWheels renders the wheels at their current angle. It only reads car
+// state; the angle itself is stepped in Steer().
+func (car *Car) DrawWheels(dc *gg.Context) {
 	for i := 0; i < len(car.Wheels); i++ {
-		if car.RotateLeft {
-			if car.WheelAngle > -car.WheelMaxAngle {
-				car.WheelAngle = car.WheelAngle - car.WheelRotationStep
-			}
-		}
-		if car.RotateRight {
-			if car.WheelAngle < car.WheelMaxAngle {
-				car.WheelAngle = car.WheelAngle + car.WheelRotationStep
-			}
-		}
 		dc.Push()
 		dc.Translate(car.Pivot.X, car.Pivot.Y)
 		dc.Rotate(car.Rotation * math.Pi / 180)
@@ -90,14 +109,7 @@ func (car *Car) DrawWheels(dc *gg.Context) gg.Context {
 		dc.DrawRectangle(-6, -15, float64(car.WheelWidth), float64(car.WheelHeight))
 		dc.Fill()
 		dc.Pop()
-
 	}
-
-	car.DirectionPivot.X = 50*math.Cos((car.WheelAngle+car.Rotation-90)*math.Pi/180) + car.FrontPivot.X
-	car.DirectionPivot.Y = 50*math.Sin((car.WheelAngle+car.Rotation-90)*math.Pi/180) + car.FrontPivot.Y
-
-	car.UpdateDirection()
-	return *dc
 }
 
 func (car *Car) Move() error {
