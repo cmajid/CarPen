@@ -17,6 +17,18 @@ Requires Go 1.25 or newer.
 
 Once the window is open, one can do the following:
 
+In the menus:
+
+* `[Up]` / `[Down]` - Move between choices
+* `[Enter]` or `[Space]` - Take the highlighted choice
+* `[Esc]` - Go back a step, and quit from the main menu
+* The mouse works too: hover to highlight, click to choose
+
+In a race:
+
 * `[Arrow-Keys]` - Move the car
+* `[Tab]` - Switch between the yellow and the red car
+* `[Esc]` - Pause, for resume / restart / quit to menu
+* `[Enter]` - Finish the race (standing in for the win condition, which is still to come)
 
 Enjoy!
