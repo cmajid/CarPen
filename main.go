@@ -105,13 +105,14 @@ func (*Game) createBush(x, y float64) carpen.Bush {
 }
 
 func (g *Game) Update() error {
+	// The key handlers only record intent; every change to Speed is made by
+	// Car.Move(), which is the one place that honours MaxSpeed and the reverse
+	// limit.
 	if inpututil.IsKeyJustPressed(ebiten.KeyUp) {
 		g.car[g.ActiveCar].Accelerate = true
-		g.car[g.ActiveCar].Speed += g.car[g.ActiveCar].Acceleration
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyDown) {
 		g.car[g.ActiveCar].Decelerate = true
-		g.car[g.ActiveCar].Speed -= g.car[g.ActiveCar].Acceleration
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyLeft) {
 		g.car[g.ActiveCar].RotateLeft = true
