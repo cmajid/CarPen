@@ -135,10 +135,21 @@ func (car *Car) wheelGeoM(i int) ebiten.GeoM {
 	return g
 }
 
-// OBB returns the car's oriented bounding box: the body sprite's footprint on
-// the lot, turned with the car. The sprite hangs (-60, -30) from the pivot in
-// the car's own frame (see bodyGeoM), so its centre sits at that offset plus
-// half the sprite, turned by Rotation and placed at the pivot.
+// The car's collision shape is drawn in a little from the sprite and has its
+// corners cut, both tuned by eye against the artwork: the sprite's paint
+// reaches within a few pixels of its edge, and its corners are rounded. A
+// touch of forgiveness here makes a near miss look like the near miss it was;
+// raise the inset for a more forgiving game.
+const (
+	carBodyInset   = 4.0
+	carCornerBevel = 16.0
+)
+
+// OBB returns the car's collision shape: the body sprite's footprint on the
+// lot, pulled in by carBodyInset with carCornerBevel corners, turned with the
+// car. The sprite hangs (-60, -30) from the pivot in the car's own frame (see
+// bodyGeoM), so its centre sits at that offset plus half the sprite, turned
+// by Rotation and placed at the pivot.
 func (car *Car) OBB() *OBB {
 	sin, cos := math.Sincos(car.Rotation * math.Pi / 180)
 	dx := car.bodyWidth/2 - 60
@@ -147,7 +158,9 @@ func (car *Car) OBB() *OBB {
 	centerY := dx*sin + dy*cos + car.Pivot.Y
 
 	if car.obb == nil {
-		car.obb = NewOBB(centerX, centerY, car.bodyWidth, car.bodyHeight, car.Rotation)
+		car.obb = NewBeveledOBB(centerX, centerY,
+			car.bodyWidth-2*carBodyInset, car.bodyHeight-2*carBodyInset,
+			carCornerBevel, car.Rotation)
 	}
 	car.obb.SetTransform(centerX, centerY, car.Rotation)
 	return car.obb

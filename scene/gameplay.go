@@ -231,7 +231,7 @@ func (g *Gameplay) findCollision() (carpen.CollisionEvent, bool) {
 		}
 	}
 	for i := range g.bushes {
-		if carpen.Intersects(active, g.bushes[i].OBB()) {
+		if g.bushes[i].Collider().IntersectsOBB(active) {
 			return carpen.CollisionEvent{Obstruction: carpen.ObstructionBush}, true
 		}
 	}
@@ -286,7 +286,8 @@ func (g *Gameplay) drawOBBs(screen *ebiten.Image) {
 		strokeOBB(screen, g.cars[i].OBB(), colour)
 	}
 	for i := range g.bushes {
-		strokeOBB(screen, g.bushes[i].OBB(), colourAccent)
+		circle := g.bushes[i].Collider()
+		strokeCircle(screen, circle.Center(), circle.Radius(), 2, colourAccent)
 	}
 	for _, wall := range g.walls {
 		strokeOBB(screen, wall, colourBay)
@@ -317,9 +318,9 @@ func (g *Gameplay) drawDebugStatus(screen *ebiten.Image) {
 }
 
 func strokeOBB(dst *ebiten.Image, obb *carpen.OBB, colour color.Color) {
-	corners := obb.Corners()
-	for i := range corners {
-		strokeLine(dst, corners[i], corners[(i+1)%len(corners)], 2, colour)
+	outline := obb.Outline()
+	for i := range outline {
+		strokeLine(dst, outline[i], outline[(i+1)%len(outline)], 2, colour)
 	}
 }
 

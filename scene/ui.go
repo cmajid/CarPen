@@ -86,6 +86,12 @@ func strokeLine(dst *ebiten.Image, from, to carpen.Vector, width float64, colour
 	vector.StrokeLine(dst, float32(from.X), float32(from.Y), float32(to.X), float32(to.Y), float32(width), colour, true)
 }
 
+// strokeCircle draws a circle's outline, antialiased like strokeLine — the F3
+// overlay draws the bushes' round colliders with it.
+func strokeCircle(dst *ebiten.Image, centre carpen.Vector, radius, width float64, colour color.Color) {
+	vector.StrokeCircle(dst, float32(centre.X), float32(centre.Y), float32(radius), float32(width), colour, true)
+}
+
 // drawPanel draws a card with a line of accent along its top edge, the shape the
 // pause overlay and the results screen both present their choices in.
 func drawPanel(dst *ebiten.Image, x, y, width, height float64) {

@@ -88,24 +88,107 @@ func TestIntersects(t *testing.T) {
 	}
 }
 
-// TestOBBCorners pins the whole transform down at once: a 4x2 box at (10, 20)
+// TestOBBOutline pins the whole transform down at once: a 4x2 box at (10, 20)
 // turned 90 degrees clockwise stands upright, so its corners are the centre
 // plus (±1, ±2), starting from where the unturned top-left corner went.
-func TestOBBCorners(t *testing.T) {
+func TestOBBOutline(t *testing.T) {
 	obb := NewOBB(10, 20, 4, 2, 90)
 
-	want := [4]Vector{
+	want := []Vector{
 		{X: 11, Y: 18},
 		{X: 11, Y: 22},
 		{X: 9, Y: 22},
 		{X: 9, Y: 18},
 	}
 
-	corners := obb.Corners()
+	outline := obb.Outline()
+	if len(outline) != len(want) {
+		t.Fatalf("outline has %d corners, want %d", len(outline), len(want))
+	}
 	for i := range want {
-		if math.Abs(corners[i].X-want[i].X) > 1e-9 || math.Abs(corners[i].Y-want[i].Y) > 1e-9 {
-			t.Errorf("corner %d = (%g, %g), want (%g, %g)", i, corners[i].X, corners[i].Y, want[i].X, want[i].Y)
+		if math.Abs(outline[i].X-want[i].X) > 1e-9 || math.Abs(outline[i].Y-want[i].Y) > 1e-9 {
+			t.Errorf("corner %d = (%g, %g), want (%g, %g)", i, outline[i].X, outline[i].Y, want[i].X, want[i].Y)
 		}
+	}
+}
+
+// TestBeveledOBBMissesAtTheCorner probes a box only just overlapping a plain
+// rectangle's corner region: the bevel cuts that corner off, so the beveled
+// shape — same width, same height — clears what the sharp one catches.
+func TestBeveledOBBMissesAtTheCorner(t *testing.T) {
+	probe := NewOBB(10.5, 4.5, 2, 2, 0)
+
+	if !Intersects(NewOBB(0, 0, 20, 10, 0), probe) {
+		t.Fatal("the sharp-cornered box misses the probe; the test is set up wrong")
+	}
+	if Intersects(NewBeveledOBB(0, 0, 20, 10, 3, 0), probe) {
+		t.Error("the beveled box still catches the probe its cut corner should clear")
+	}
+}
+
+func TestBeveledOBBOutline(t *testing.T) {
+	outline := NewBeveledOBB(0, 0, 20, 10, 3, 0).Outline()
+
+	want := []Vector{
+		{X: -7, Y: -5},
+		{X: 7, Y: -5},
+		{X: 10, Y: -2},
+		{X: 10, Y: 2},
+		{X: 7, Y: 5},
+		{X: -7, Y: 5},
+		{X: -10, Y: 2},
+		{X: -10, Y: -2},
+	}
+	if len(outline) != len(want) {
+		t.Fatalf("outline has %d corners, want %d", len(outline), len(want))
+	}
+	for i := range want {
+		if math.Abs(outline[i].X-want[i].X) > 1e-9 || math.Abs(outline[i].Y-want[i].Y) > 1e-9 {
+			t.Errorf("corner %d = (%g, %g), want (%g, %g)", i, outline[i].X, outline[i].Y, want[i].X, want[i].Y)
+		}
+	}
+}
+
+func TestCircleIntersectsOBB(t *testing.T) {
+	box := NewOBB(0, 0, 10, 10, 0)
+
+	cases := []struct {
+		name   string
+		circle *Circle
+		box    *OBB
+		want   bool
+	}{
+		{"separated", NewCircle(30, 0, 5), box, false},
+		{"overlapping a face", NewCircle(9, 0, 5), box, true},
+		{
+			// The case the circle collider exists for: near the box's corner,
+			// every face axis overlaps, and only the centre-to-corner axis
+			// tells that the round shape is still 5.66 away from it.
+			name:   "clears the corner a square would catch",
+			circle: NewCircle(9, 9, 5),
+			box:    box,
+			want:   false,
+		},
+		{"reaches the corner", NewCircle(8, 8, 5), box, true},
+		{"contained", NewCircle(0, 0, 3), NewOBB(0, 0, 100, 100, 0), true},
+		{"centre on the corner", NewCircle(5, 5, 1), box, true},
+		{
+			// A turned box turns its corners with it: at 45 degrees the box's
+			// corner points along the X axis and reaches out to √50 ≈ 7.07,
+			// catching a circle its unturned self stays clear of.
+			name:   "rotated box reaches further",
+			circle: NewCircle(11, 0, 4),
+			box:    NewOBB(0, 0, 10, 10, 45),
+			want:   true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := c.circle.IntersectsOBB(c.box); got != c.want {
+				t.Errorf("IntersectsOBB = %t, want %t", got, c.want)
+			}
+		})
 	}
 }
 
@@ -140,6 +223,9 @@ func TestCarOBB(t *testing.T) {
 	if math.Abs(centre.X-wantX) > 1e-9 || math.Abs(centre.Y-wantY) > 1e-9 {
 		t.Errorf("car OBB centre = (%g, %g), want (%g, %g)", centre.X, centre.Y, wantX, wantY)
 	}
+	if corners := len(car.OBB().Outline()); corners != 8 {
+		t.Errorf("car outline has %d corners, want the beveled shape's 8", corners)
+	}
 
 	// Turned half a circle, the same offset points the other way.
 	car.Rotation = 180
@@ -150,17 +236,22 @@ func TestCarOBB(t *testing.T) {
 	}
 }
 
-// TestBushOBB pins the bush's box to how it is drawn: the sprite's top-left
-// corner sits at Direction, so the box is centred half a sprite further in.
-func TestBushOBB(t *testing.T) {
+// TestBushCollider pins the bush's circle to how it is drawn: the sprite's
+// top-left corner sits at Direction, so the circle is centred half a sprite
+// further in, and its radius is the sprite's shorter half less the inset.
+func TestBushCollider(t *testing.T) {
 	bush := Bush{
 		Direction: Direction{X: 40, Y: 60},
 		width:     109,
 		height:    108,
 	}
 
-	centre := bush.OBB().Center()
+	circle := bush.Collider()
+	centre := circle.Center()
 	if math.Abs(centre.X-(40+54.5)) > 1e-9 || math.Abs(centre.Y-(60+54)) > 1e-9 {
-		t.Errorf("bush OBB centre = (%g, %g), want (%g, %g)", centre.X, centre.Y, 40+54.5, 60.0+54)
+		t.Errorf("bush circle centre = (%g, %g), want (%g, %g)", centre.X, centre.Y, 40+54.5, 60.0+54)
+	}
+	if want := 108.0/2 - bushInset; circle.Radius() != want {
+		t.Errorf("bush circle radius = %g, want %g", circle.Radius(), want)
 	}
 }

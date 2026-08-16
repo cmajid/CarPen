@@ -22,8 +22,8 @@ Module `github.com/cmajid/carpen`, three packages: `main` (window wiring only), 
 | `carpen/car.go` | `Car` struct, physics, and drawing. The only file with nontrivial logic. |
 | `carpen/vector.go` | `Vector` with `Length`/`Normalize`. `Normalize` returns zero for a zero vector — a deliberate NaN guard; a NaN here would spread to position and never leave. |
 | `carpen/pivot.go`, `carpen/wheel.go` | Plain `{X, Y}` position structs (`Pivot`, `FrontPivot`, `RearPivot`, `RearPivotAbs`, `DirectionPivot`, `Direction`, `Wheel`). |
-| `carpen/bush.go` | Static sprite obstacle with an `OBB()` derived from its position and sprite size. |
-| `carpen/collision.go` | `OBB` (centre, size, degrees clockwise) and `Intersects` — the SAT test, and the **only** file that imports resolv. Details and the library's traps: `resolv-collision` skill. |
+| `carpen/bush.go` | Static sprite obstacle with a round `Collider()` derived from its position and sprite size. |
+| `carpen/collision.go` | `OBB` (plain or corner-beveled, degrees clockwise), `Circle`, and the SAT tests `Intersects` / `IntersectsOBB` — the **only** file that imports resolv. Details and the library's traps: `resolv-collision` skill. |
 | `carpen/level.go` | Level format and loader (issue #19): `Level`, `Lot`, `Bay`, `Obstacle`, JSON files embedded from `carpen/levels/`, validated on load. |
 | `carpen/assets.go` | `//go:embed assets/*.png`; entities load images via `ebitenutil.NewImageFromFileSystem`. Never load assets from disk paths. |
 | `carpen/*_test.go` | Unit tests for car physics, vector math, level loading, and collision (`collision_test.go` pins the rotation direction and the containment case). |
@@ -39,9 +39,9 @@ Kinematic front-wheel steering, all angles in **degrees** (converted with `math.
 
 ## Collision (collision.go + gameplay.go)
 
-OBB/SAT via the resolv library, wrapped so the game only ever speaks degrees-clockwise (full rules and resolv's traps: the `resolv-collision` skill):
+SAT via the resolv library, wrapped so the game only ever speaks degrees-clockwise (full rules and resolv's traps: the `resolv-collision` skill):
 
-- Entities build their `*OBB` once and re-place it per call (`Car.OBB()`, `Bush.OBB()`); `Intersects` is strict, so edge-touching is not a hit.
+- Entities build their collider once and re-place it per call: `Car.OBB()` is a corner-beveled octagon, `Bush.Collider()` a circle, both inset a few px from the sprite for forgiveness (tuning constants in car.go/bush.go). `Intersects` is strict, so edge-touching is not a hit.
 - Detection raises `carpen.CollisionEvent`; `Gameplay.OnCollision` alone decides what a crash means. Keep consequences out of detection code.
 - Only the active car is checked — against walls, bushes, and the other cars — after all cars have stepped, so a hit lands the same tick.
 

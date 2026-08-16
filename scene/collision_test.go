@@ -1,6 +1,7 @@
 package scene
 
 import (
+	"math"
 	"testing"
 
 	"github.com/cmajid/carpen/carpen"
@@ -35,11 +36,22 @@ func recordCollisions(g *Gameplay) *[]carpen.CollisionEvent {
 // must be the tick the event fires — not the one after.
 func TestGameplayDetectsWallSameTick(t *testing.T) {
 	in := newFakeInput()
-	g := newGameplay(in, collisionLevel(carpen.CarStart{Color: "yellow", X: 100, Y: 13}))
+
+	// The exact start matters, and the collision shape is inset from the
+	// sprite by hand-tuned amounts, so the car is placed by measuring its own
+	// outline: wherever the shape's top edge falls, start it 3 pixels into
+	// the lot. The test then survives any retuning of the shape.
+	probe := newGameplay(in, collisionLevel(carpen.CarStart{Color: "yellow", X: 100, Y: 0}))
+	top := math.Inf(1)
+	for _, corner := range probe.cars[0].OBB().Outline() {
+		top = math.Min(top, corner.Y)
+	}
+
+	g := newGameplay(in, collisionLevel(carpen.CarStart{Color: "yellow", X: 100, Y: 3 - top}))
 	events := recordCollisions(g)
 
-	// The car starts with its body's top edge 3 pixels into the lot and rolls
-	// up 1 pixel on the first tick: close, but still no collision.
+	// The car starts with its shape's top edge 3 pixels into the lot and
+	// rolls up 1 pixel on the first tick: close, but still no collision.
 	if _, err := g.Update(); err != nil {
 		t.Fatal(err)
 	}
@@ -71,8 +83,8 @@ func TestGameplayDetectsWallSameTick(t *testing.T) {
 	}
 }
 
-// TestGameplayDetectsBush puts a bush in the path the car coasts along from a
-// standing start and lets it roll into it.
+// TestGameplayDetectsBush puts a bush in the car's path and drives flat out
+// into it.
 func TestGameplayDetectsBush(t *testing.T) {
 	in := newFakeInput()
 	g := newGameplay(in,
@@ -80,6 +92,7 @@ func TestGameplayDetectsBush(t *testing.T) {
 			carpen.Obstacle{Type: carpen.ObstacleBush, X: 200, Y: 100}))
 	events := recordCollisions(g)
 
+	in.press(ebiten.KeyUp)
 	for i := 0; i < 30 && len(*events) == 0; i++ {
 		if _, err := g.Update(); err != nil {
 			t.Fatal(err)
