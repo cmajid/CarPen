@@ -15,9 +15,6 @@ type RearPivot struct {
 type RearPivotAbs struct {
 	X, Y float64
 }
-type TempDirPivot struct {
-	X, Y float64
-}
 type Direction struct {
 	X, Y float64
 }

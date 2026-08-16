@@ -16,9 +16,7 @@ type Car struct {
 	Accelerate,
 	Decelerate bool
 	WheelWidth,
-	WheelHeight,
-	Width,
-	Height int
+	WheelHeight int
 	WheelRotationStep,
 	WheelMaxAngle,
 	WheelAngle,
@@ -65,12 +63,9 @@ func (c *Car) UpdateDirection() {
 // game's Update(), which Ebiten runs at a fixed tick rate; calling it from the
 // draw path would tie the car's speed and steering to the display's refresh
 // rate.
-func (car *Car) Update() error {
-	if err := car.Move(); err != nil {
-		return err
-	}
+func (car *Car) Update() {
+	car.Move()
 	car.Steer()
-	return nil
 }
 
 // Steer advances the front wheels towards the angle the player is asking for
@@ -138,7 +133,18 @@ func (car *Car) wheelGeoM(i int) ebiten.GeoM {
 	return g
 }
 
-func (car *Car) Move() error {
+// UpdateRearPivotAbs recomputes where the rear axle sits on screen: RearPivot is
+// the axle's offset from the pivot in the car's own frame, so it turns with the
+// car and is then placed at the pivot.
+func (car *Car) UpdateRearPivotAbs() {
+	sin, cos := math.Sincos(car.Rotation * math.Pi / 180)
+	car.RearPivotAbs = RearPivotAbs{
+		X: car.RearPivot.X*cos - car.RearPivot.Y*sin + car.Pivot.X,
+		Y: car.RearPivot.X*sin + car.RearPivot.Y*cos + car.Pivot.Y,
+	}
+}
+
+func (car *Car) Move() {
 
 	forceStop := true
 	moveFast := car.Accelerate && car.Speed < car.MaxSpeed
@@ -176,9 +182,5 @@ func (car *Car) Move() error {
 	rotation = 360 - rotation - 90
 	car.Rotation = rotation
 
-	car.RearPivotAbs = RearPivotAbs{
-		X: 160*math.Cos((car.Rotation+90)*math.Pi/180) + car.Pivot.X,
-		Y: 160*math.Sin((car.Rotation+90)*math.Pi/180) + car.Pivot.Y,
-	}
-	return nil
+	car.UpdateRearPivotAbs()
 }
