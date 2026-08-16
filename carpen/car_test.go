@@ -82,6 +82,123 @@ func TestMoveAdvancesPivot(t *testing.T) {
 	}
 }
 
+// Holding the accelerator must not wind the speed up without end: Move() is the
+// only writer of Speed, and it stops adding once MaxSpeed is reached, so the
+// speed settles within one acceleration step of the limit.
+func TestMoveClampsForwardSpeedToMaxSpeed(t *testing.T) {
+	c := newTestCar()
+	c.Accelerate = true
+
+	for i := 0; i < 200; i++ {
+		c.Move()
+
+		if c.Speed > c.MaxSpeed+c.Acceleration {
+			t.Fatalf("Speed reached %v after %d ticks, want no more than %v", c.Speed, i+1, c.MaxSpeed+c.Acceleration)
+		}
+	}
+
+	if c.Speed < c.MaxSpeed-c.Acceleration {
+		t.Errorf("Speed settled at %v, want within %v of MaxSpeed %v", c.Speed, c.Acceleration, c.MaxSpeed)
+	}
+}
+
+// Reverse has its own, lower limit, so the car backs up slowly however long the
+// key is held.
+func TestMoveClampsReverseSpeed(t *testing.T) {
+	const maxReverse = -3.0
+
+	c := newTestCar()
+	c.Decelerate = true
+
+	for i := 0; i < 200; i++ {
+		c.Move()
+
+		if c.Speed < maxReverse-c.Acceleration {
+			t.Fatalf("Speed reached %v after %d ticks, want no less than %v", c.Speed, i+1, maxReverse-c.Acceleration)
+		}
+	}
+
+	if c.Speed > maxReverse+c.Acceleration {
+		t.Errorf("Speed settled at %v, want within %v of %v", c.Speed, c.Acceleration, maxReverse)
+	}
+}
+
+// With no key held the car coasts to a full stop and stays there, rather than
+// creeping backwards past zero.
+func TestMoveCoastsToAStop(t *testing.T) {
+	c := newTestCar()
+
+	for i := 0; i < 100; i++ {
+		c.Move()
+	}
+
+	if c.Speed != 0 {
+		t.Errorf("Speed after coasting = %v, want 0", c.Speed)
+	}
+}
+
+// The car ends every tick aimed along the line from its rear axle to its pivot.
+// That lag between where the nose points and where the car is travelling is the
+// drift. Rotation is degrees clockwise from straight up the screen.
+func TestMoveAimsCarFromRearAxleToPivot(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		axleToPivot Vector
+		want        float64
+	}{
+		{name: "nose up", axleToPivot: Vector{X: 0, Y: -160}, want: 0},
+		{name: "nose right", axleToPivot: Vector{X: 160, Y: 0}, want: 90},
+		{name: "nose down", axleToPivot: Vector{X: 0, Y: 160}, want: 180},
+		{name: "nose left", axleToPivot: Vector{X: -160, Y: 0}, want: -90},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newTestCar()
+			c.Direction = Direction{} // hold the pivot still, so only the aim is under test
+			c.RearPivotAbs = RearPivotAbs{X: c.Pivot.X - tc.axleToPivot.X, Y: c.Pivot.Y - tc.axleToPivot.Y}
+
+			c.Move()
+
+			if !sameAngle(c.Rotation, tc.want) {
+				t.Errorf("Rotation = %v, want %v", c.Rotation, tc.want)
+			}
+		})
+	}
+}
+
+// Direction carries both where the car is heading and how fast: Move() adds it
+// to the pivot as-is, so Steer() has to scale the unit heading by the speed.
+func TestUpdateDirectionScalesHeadingBySpeed(t *testing.T) {
+	c := newTestCar()
+	c.Speed = 3
+	c.FrontPivot = FrontPivot{X: 100, Y: 100}
+	c.DirectionPivot = DirectionPivot{X: 100, Y: 50} // 50px straight up
+
+	c.UpdateDirection()
+
+	if !closeTo(c.Direction.X, 0) || !closeTo(c.Direction.Y, -3) {
+		t.Errorf("Direction = (%v, %v), want (0, -3)", c.Direction.X, c.Direction.Y)
+	}
+}
+
+// A car standing exactly on its own direction pivot has no heading to compute.
+// The division by a zero length used to make Direction NaN, and from there the
+// pivot and the rotation too, with no way back.
+func TestUpdateDirectionWithNoHeadingIsZeroNotNaN(t *testing.T) {
+	c := newTestCar()
+	c.FrontPivot = FrontPivot{X: 100, Y: 100}
+	c.DirectionPivot = DirectionPivot{X: 100, Y: 100}
+
+	c.UpdateDirection()
+	c.Move()
+
+	if math.IsNaN(c.Direction.X) || math.IsNaN(c.Direction.Y) {
+		t.Fatalf("Direction = (%v, %v), want no NaN", c.Direction.X, c.Direction.Y)
+	}
+	if math.IsNaN(c.Pivot.X) || math.IsNaN(c.Pivot.Y) || math.IsNaN(c.Rotation) {
+		t.Errorf("car left at pivot (%v, %v) rotation %v, want no NaN", c.Pivot.X, c.Pivot.Y, c.Rotation)
+	}
+}
+
 // RearPivot is the rear axle's offset in the car's own frame, so the axle's
 // place on screen has to follow the car's rotation about the pivot.
 func TestUpdateRearPivotAbsTurnsWithTheCar(t *testing.T) {
@@ -168,4 +285,16 @@ func rotate(x, y, degrees float64) (float64, float64) {
 
 func closeTo(got, want float64) bool {
 	return math.Abs(got-want) < 1e-9
+}
+
+// sameAngle compares two headings in degrees, treating those a whole turn apart
+// as equal: the car's rotation is an angle, not a winding count.
+func sameAngle(got, want float64) bool {
+	diff := math.Mod(got-want, 360)
+	if diff > 180 {
+		diff -= 360
+	} else if diff < -180 {
+		diff += 360
+	}
+	return math.Abs(diff) < 1e-9
 }
