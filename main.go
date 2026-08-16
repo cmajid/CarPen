@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 
+	"github.com/cmajid/carpen/carpen"
 	"github.com/cmajid/carpen/scene"
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -13,7 +14,16 @@ const (
 )
 
 func main() {
-	game := scene.NewManager(screenWidth, screenHeight, scene.NewMenu(scene.Keyboard{}))
+	// The levels are compiled into the binary, so one that will not load is a
+	// broken build rather than a missing file, and there is nothing to play.
+	levels, err := carpen.Levels()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// The menu opens on the first level. Working through the rest of them is
+	// the level progression, which comes later in the roadmap (#17).
+	game := scene.NewManager(screenWidth, screenHeight, scene.NewMenu(scene.Keyboard{}, levels[0]))
 
 	ebiten.SetWindowSize(screenWidth, screenHeight)
 	ebiten.SetWindowTitle("Car Pen")

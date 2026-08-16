@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"log"
 
+	"github.com/cmajid/carpen/carpen"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -27,6 +28,7 @@ var (
 	colourAccent    = color.RGBA{R: 0xff, G: 0xb0, B: 0x20, A: 0xff}
 	colourAccentInk = color.RGBA{R: 0x14, G: 0x18, B: 0x1f, A: 0xff} // text written on top of the accent
 	colourLine      = color.RGBA{R: 0x2a, G: 0x35, B: 0x42, A: 0xff}
+	colourBay       = color.RGBA{R: 0x8a, G: 0x96, B: 0xa4, A: 0xff} // the bay painted on the lot, which is a pale ground
 
 	// Both of these are drawn over something else, so they are written with
 	// their alpha already folded in: Go's RGBA is alpha-premultiplied.
@@ -74,6 +76,13 @@ func drawText(dst *ebiten.Image, str string, face text.Face, x, y float64, colou
 
 func fillRect(dst *ebiten.Image, x, y, width, height float64, colour color.Color) {
 	vector.DrawFilledRect(dst, float32(x), float32(y), float32(width), float32(height), colour, false)
+}
+
+// strokeLine draws a line between two points. It is antialiased, because the
+// lines it draws are the markings of a parking bay, which a level is free to
+// turn to any angle.
+func strokeLine(dst *ebiten.Image, from, to carpen.Vector, width float64, colour color.Color) {
+	vector.StrokeLine(dst, float32(from.X), float32(from.Y), float32(to.X), float32(to.Y), float32(width), colour, true)
 }
 
 // drawPanel draws a card with a line of accent along its top edge, the shape the

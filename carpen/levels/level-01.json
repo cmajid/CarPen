@@ -1,0 +1,13 @@
+{
+  "id": "level-01",
+  "name": "First Steps",
+  "lot": { "width": 640, "height": 480 },
+  "car": { "color": "yellow", "x": 400, "y": 300, "rotation": 0 },
+  "bay": { "x": 150, "y": 330, "rotation": 0, "width": 130, "height": 210 },
+  "obstacles": [
+    { "type": "bush", "x": 0, "y": 0 },
+    { "type": "bush", "x": 100, "y": 100 },
+    { "type": "car", "color": "red", "x": 350, "y": 100, "rotation": 90 }
+  ],
+  "attempts": 3
+}

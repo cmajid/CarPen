@@ -1,6 +1,7 @@
 package scene
 
 import (
+	"github.com/cmajid/carpen/carpen"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
@@ -20,12 +21,17 @@ type Results struct {
 	in   Input
 	list *menuList
 	fade fade
+
+	// level is the one just played, kept so that Race Again deals the same
+	// puzzle out afresh rather than dropping the player somewhere else.
+	level carpen.Level
 }
 
-func newResults(in Input) *Results {
+func newResults(in Input, level carpen.Level) *Results {
 	return &Results{
-		in:   in,
-		list: newMenuList(206, 254, 228, "Race Again", "Main Menu"),
+		in:    in,
+		list:  newMenuList(206, 254, 228, "Race Again", "Main Menu"),
+		level: level,
 	}
 }
 
@@ -34,13 +40,13 @@ func (r *Results) Update() (Scene, error) {
 
 	switch r.list.update(r.in) {
 	case resultsAgain:
-		return newGameplay(r.in), nil
+		return newGameplay(r.in, r.level), nil
 	case resultsMenu:
-		return NewMenu(r.in), nil
+		return NewMenu(r.in, r.level), nil
 	}
 
 	if r.in.IsKeyJustPressed(ebiten.KeyEscape) {
-		return NewMenu(r.in), nil
+		return NewMenu(r.in, r.level), nil
 	}
 
 	return nil, nil

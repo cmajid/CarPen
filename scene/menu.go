@@ -21,16 +21,22 @@ type Menu struct {
 	list *menuList
 	fade fade
 
+	// level is the puzzle Start Race deals out. The menu carries it rather than
+	// loading it, so a level that will not load is reported when the game
+	// starts up instead of when the player asks to play.
+	level carpen.Level
+
 	// car is the game's own art, parked on the menu. It is the quickest way to
 	// say what this game is, and it costs one sprite that is already embedded.
 	car *ebiten.Image
 }
 
-func NewMenu(in Input) *Menu {
+func NewMenu(in Input, level carpen.Level) *Menu {
 	return &Menu{
-		in:   in,
-		list: newMenuList(56, 286, 224, "Start Race", "Quit"),
-		car:  carpen.CarImage("yellow"),
+		in:    in,
+		list:  newMenuList(56, 286, 224, "Start Race", "Quit"),
+		level: level,
+		car:   carpen.CarImage("yellow"),
 	}
 }
 
@@ -39,7 +45,7 @@ func (m *Menu) Update() (Scene, error) {
 
 	switch m.list.update(m.in) {
 	case menuStart:
-		return newGameplay(m.in), nil
+		return newGameplay(m.in, m.level), nil
 	case menuQuit:
 		return nil, ebiten.Termination
 	}

@@ -12,26 +12,36 @@ import (
 // Gameplay is the game itself: the cars, the bushes, and the driving.
 type Gameplay struct {
 	in        Input
+	level     carpen.Level
 	cars      []carpen.Car
 	bushes    []carpen.Bush
 	activeCar int
 	fade      fade
 }
 
-// newGameplay lays out a fresh world. Where everything stands is written out by
-// hand here for now; issue #19 moves the layout into level data.
-func newGameplay(in Input) *Gameplay {
-	g := &Gameplay{in: in}
+// newGameplay lays out a fresh world from a level. Nothing about where things
+// stand is decided here: the level says what goes where, and this only turns
+// each of those into the car or the bush that drives and draws.
+//
+// The player's car is always cars[0], so the level's own car is the one the
+// player is given the keys to.
+func newGameplay(in Input, level carpen.Level) *Gameplay {
+	g := &Gameplay{in: in, level: level}
 
-	g.bushes = []carpen.Bush{newBush(0, 0), newBush(100, 100)}
+	g.cars = []carpen.Car{newCar(level.Car.Color, level.Car.X, level.Car.Y, level.Car.Rotation, true)}
+	for _, obstacle := range level.Obstacles {
+		switch obstacle.Type {
+		case carpen.ObstacleBush:
+			g.bushes = append(g.bushes, newBush(obstacle.X, obstacle.Y))
+		case carpen.ObstacleCar:
+			g.cars = append(g.cars, newCar(obstacle.Color, obstacle.X, obstacle.Y, obstacle.Rotation, false))
+		}
+	}
+
 	for i := range g.bushes {
 		g.bushes[i].Init()
 	}
 
-	g.cars = []carpen.Car{
-		newCar("yellow", 400, 300, 0, true),
-		newCar("red", 350, 100, 90, false),
-	}
 	for i := range g.cars {
 		g.cars[i].Init()
 
@@ -98,7 +108,7 @@ func (g *Gameplay) Update() (Scene, error) {
 	// Standing in for the win condition, which cannot tell the race is over
 	// until the cars can hit something (#20): Enter ends the race by hand.
 	if g.in.IsKeyJustPressed(ebiten.KeyEnter) {
-		return newResults(g.in), nil
+		return newResults(g.in, g.level), nil
 	}
 
 	// The key handlers only record intent; every change to Speed is made by
@@ -129,12 +139,12 @@ func (g *Gameplay) Update() (Scene, error) {
 	if g.in.IsKeyJustReleased(ebiten.KeyLeft) {
 		g.cars[g.activeCar].RotateLeft = false
 	}
+	// Tab hands the keys to the next car in the level, which is how the
+	// prototype's two cars are still both drivable. It comes to nothing on a
+	// level with a single car, and goes for good once a parked car is something
+	// to be avoided rather than driven (#20).
 	if g.in.IsKeyJustReleased(ebiten.KeyTab) {
-		if g.activeCar == 1 {
-			g.activeCar = 0
-		} else {
-			g.activeCar = 1
-		}
+		g.activeCar = (g.activeCar + 1) % len(g.cars)
 	}
 
 	for i := range g.cars {
@@ -145,7 +155,13 @@ func (g *Gameplay) Update() (Scene, error) {
 }
 
 func (g *Gameplay) Draw(screen *ebiten.Image) {
-	screen.Fill(color.White)
+	// The lot is the ground the level is played on. It is the whole screen on
+	// every level so far, and anything the screen has left over is drawn in the
+	// menus' dark ink rather than in more lot.
+	screen.Fill(colourInk)
+	fillRect(screen, 0, 0, g.level.Lot.Width, g.level.Lot.Height, color.White)
+
+	g.drawBay(screen)
 
 	for i := range g.cars {
 		g.cars[i].DrawCar(screen)
@@ -157,6 +173,20 @@ func (g *Gameplay) Draw(screen *ebiten.Image) {
 	g.drawHUD(screen)
 	g.fade.draw(screen)
 }
+
+// drawBay marks out the space the level asks the player to park in: the two
+// sides and the back of the bay, painted on the ground and left open on the
+// edge the car drives in over. It is drawn before the cars, so a car parked in
+// the bay stands on the lines rather than under them.
+func (g *Gameplay) drawBay(screen *ebiten.Image) {
+	nearLeft, nearRight, farLeft, farRight := g.level.Bay.Corners()
+
+	strokeLine(screen, nearLeft, farLeft, bayLineWidth, colourBay)
+	strokeLine(screen, nearRight, farRight, bayLineWidth, colourBay)
+	strokeLine(screen, farLeft, farRight, bayLineWidth, colourBay)
+}
+
+const bayLineWidth = 4
 
 // drawHUD writes the driving keys and the tick rate on a dark strip. The race is
 // played on a white ground, which pale text disappears into, so the strip is

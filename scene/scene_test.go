@@ -64,6 +64,19 @@ func (f *fakeInput) clear() {
 	f.clicked = false
 }
 
+// testLevel is the level the screens are tested on: the game's own first one,
+// so the tests are played in the world the player is given rather than in one
+// written for them.
+func testLevel(t *testing.T) carpen.Level {
+	t.Helper()
+
+	levels, err := carpen.Levels()
+	if err != nil {
+		t.Fatalf("loading the levels: %v", err)
+	}
+	return levels[0]
+}
+
 // stubScene stands in for a real screen, so the manager can be tested on its own:
 // it hands over whatever it is told to and counts what it was asked to do.
 type stubScene struct {
@@ -187,7 +200,7 @@ func TestManagerLayoutIsFixed(t *testing.T) {
 // shows its results, and the results lead back to the menu.
 func TestMenuGameplayResultsCycle(t *testing.T) {
 	in := newFakeInput()
-	m := NewManager(640, 480, NewMenu(in))
+	m := NewManager(640, 480, NewMenu(in, testLevel(t)))
 
 	choose(t, m, in, menuStart)
 	if _, ok := m.current.(*Gameplay); !ok {
@@ -210,7 +223,7 @@ func TestMenuGameplayResultsCycle(t *testing.T) {
 func TestEscapeGoesBack(t *testing.T) {
 	t.Run("results back to the menu", func(t *testing.T) {
 		in := newFakeInput()
-		m := NewManager(640, 480, newResults(in))
+		m := NewManager(640, 480, newResults(in, testLevel(t)))
 
 		tick(t, m, in, ebiten.KeyEscape)
 
@@ -221,7 +234,7 @@ func TestEscapeGoesBack(t *testing.T) {
 
 	t.Run("pause back to the race", func(t *testing.T) {
 		in := newFakeInput()
-		game := newGameplay(in)
+		game := newGameplay(in, testLevel(t))
 		m := NewManager(640, 480, game)
 
 		tick(t, m, in, ebiten.KeyEscape)
@@ -234,7 +247,7 @@ func TestEscapeGoesBack(t *testing.T) {
 
 	t.Run("menu ends the game", func(t *testing.T) {
 		in := newFakeInput()
-		m := NewManager(640, 480, NewMenu(in))
+		m := NewManager(640, 480, NewMenu(in, testLevel(t)))
 
 		in.press(ebiten.KeyEscape)
 
@@ -248,7 +261,7 @@ func TestEscapeGoesBack(t *testing.T) {
 // rather than as a failure.
 func TestMenuQuitEndsTheGame(t *testing.T) {
 	in := newFakeInput()
-	m := NewManager(640, 480, NewMenu(in))
+	m := NewManager(640, 480, NewMenu(in, testLevel(t)))
 
 	in.press(ebiten.KeyDown)
 	if err := m.Update(); err != nil {
@@ -264,7 +277,7 @@ func TestMenuQuitEndsTheGame(t *testing.T) {
 // Pausing and resuming has to come back to the same race, not to a fresh one.
 func TestPauseResumesTheSameRace(t *testing.T) {
 	in := newFakeInput()
-	game := newGameplay(in)
+	game := newGameplay(in, testLevel(t))
 	m := NewManager(640, 480, game)
 
 	tick(t, m, in, ebiten.KeyEscape)
@@ -286,7 +299,7 @@ func TestPauseResumesTheSameRace(t *testing.T) {
 // scene, and while the pause overlay is the running scene there are none.
 func TestPauseFreezesTheCars(t *testing.T) {
 	in := newFakeInput()
-	game := newGameplay(in)
+	game := newGameplay(in, testLevel(t))
 	m := NewManager(640, 480, game)
 
 	tick(t, m, in, ebiten.KeyEscape)
@@ -306,7 +319,7 @@ func TestPauseFreezesTheCars(t *testing.T) {
 // otherwise carry on accelerating after resuming with nothing held down.
 func TestPauseReleasesHeldControls(t *testing.T) {
 	in := newFakeInput()
-	game := newGameplay(in)
+	game := newGameplay(in, testLevel(t))
 	m := NewManager(640, 480, game)
 
 	tick(t, m, in, ebiten.KeyUp, ebiten.KeyLeft)
@@ -323,7 +336,7 @@ func TestPauseReleasesHeldControls(t *testing.T) {
 
 func TestPauseQuitReturnsToTheMenu(t *testing.T) {
 	in := newFakeInput()
-	m := NewManager(640, 480, newGameplay(in))
+	m := NewManager(640, 480, newGameplay(in, testLevel(t)))
 
 	tick(t, m, in, ebiten.KeyEscape)
 	choose(t, m, in, pauseQuit)
@@ -337,7 +350,7 @@ func TestPauseQuitReturnsToTheMenu(t *testing.T) {
 // player back into the one they were stuck in.
 func TestPauseRestartDealsAFreshRace(t *testing.T) {
 	in := newFakeInput()
-	first := newGameplay(in)
+	first := newGameplay(in, testLevel(t))
 	m := NewManager(640, 480, first)
 
 	// Drive for a while, so a race that carried on would be somewhere else.
@@ -354,7 +367,7 @@ func TestPauseRestartDealsAFreshRace(t *testing.T) {
 	if second == first {
 		t.Fatal("restarting carried on the same race, want a fresh one")
 	}
-	if second.cars[0].Pivot != newGameplay(in).cars[0].Pivot {
+	if second.cars[0].Pivot != newGameplay(in, testLevel(t)).cars[0].Pivot {
 		t.Errorf("restarted race starts at %v, want where a first race starts", second.cars[0].Pivot)
 	}
 }
@@ -373,7 +386,7 @@ func TestGameplayDrivesTheActiveCar(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			in := newFakeInput()
-			game := newGameplay(in)
+			game := newGameplay(in, testLevel(t))
 
 			in.press(tc.key)
 			if _, err := game.Update(); err != nil {
@@ -392,7 +405,7 @@ func TestGameplayDrivesTheActiveCar(t *testing.T) {
 
 func TestGameplayTabSwapsTheActiveCar(t *testing.T) {
 	in := newFakeInput()
-	game := newGameplay(in)
+	game := newGameplay(in, testLevel(t))
 
 	for _, want := range []int{1, 0} {
 		in.release(ebiten.KeyTab)
@@ -410,7 +423,7 @@ func TestGameplayTabSwapsTheActiveCar(t *testing.T) {
 // the draw path.
 func TestGameplayStepsTheCarsEachTick(t *testing.T) {
 	in := newFakeInput()
-	game := newGameplay(in)
+	game := newGameplay(in, testLevel(t))
 	before := game.cars[0].Pivot
 
 	if _, err := game.Update(); err != nil {
