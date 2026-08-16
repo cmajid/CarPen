@@ -21,7 +21,7 @@ type Bush struct {
 
 func (b *Bush) Init() {
 	var err error
-	b.Image, _, err = ebitenutil.NewImageFromFile("bush-small.png")
+	b.Image, _, err = ebitenutil.NewImageFromFileSystem(assets, "assets/bush-small.png")
 	if err != nil {
 		log.Fatal(err)
 	}
