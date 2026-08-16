@@ -42,7 +42,7 @@ type Car struct {
 
 func (c *Car) Init() {
 	var err error
-	c.Image, _, err = ebitenutil.NewImageFromFile("car-" + c.Color + ".png")
+	c.Image, _, err = ebitenutil.NewImageFromFileSystem(assets, "assets/car-"+c.Color+".png")
 	if err != nil {
 		log.Fatal(err)
 	}
