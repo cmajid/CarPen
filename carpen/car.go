@@ -1,11 +1,10 @@
 package carpen
 
 import (
-	"image"
+	"image/color"
 	"log"
 	"math"
 
-	"github.com/fogleman/gg"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
@@ -38,6 +37,10 @@ type Car struct {
 	Direction      Direction
 	Image          *ebiten.Image
 	Color          string
+
+	// wheelImage is the black rectangle every wheel is drawn from. It is built
+	// once in Init() and reused for all four wheels of every frame.
+	wheelImage *ebiten.Image
 }
 
 func (c *Car) Init() {
@@ -46,6 +49,9 @@ func (c *Car) Init() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	c.wheelImage = ebiten.NewImage(c.WheelWidth, c.WheelHeight)
+	c.wheelImage.Fill(color.Black)
 }
 
 func (c *Car) UpdateDirection() {
@@ -83,33 +89,53 @@ func (car *Car) Steer() {
 	car.UpdateDirection()
 }
 
-func (car *Car) DrawCar() image.Image {
-	dc := gg.NewContext(640, 480)
-	car.DrawWheels(dc)
-	dc.Translate(car.Pivot.X, car.Pivot.Y)
-	dc.Rotate(car.Rotation * math.Pi / 180)
-	dc.DrawImage(car.Image, -60, -30)
-	dc.Fill()
-	return dc.Image()
+// DrawCar blits the wheels and the body straight onto screen. The sprites are
+// placed with a GeoM per draw, so a frame allocates no image and no off-screen
+// buffer however many cars there are.
+func (car *Car) DrawCar(screen *ebiten.Image) {
+	car.DrawWheels(screen)
+
+	opt := &ebiten.DrawImageOptions{Filter: ebiten.FilterLinear}
+	opt.GeoM = car.bodyGeoM()
+	screen.DrawImage(car.Image, opt)
 }
 
 // DrawWheels renders the wheels at their current angle. It only reads car
 // state; the angle itself is stepped in Steer().
-func (car *Car) DrawWheels(dc *gg.Context) {
+func (car *Car) DrawWheels(screen *ebiten.Image) {
+	opt := &ebiten.DrawImageOptions{Filter: ebiten.FilterLinear}
 	for i := 0; i < len(car.Wheels); i++ {
-		dc.Push()
-		dc.Translate(car.Pivot.X, car.Pivot.Y)
-		dc.Rotate(car.Rotation * math.Pi / 180)
-		var o = car.Wheels[i]
-		dc.Translate(o.X, o.Y)
-		if i < 2 {
-			dc.Rotate((car.WheelAngle) * math.Pi / 180)
-		}
-		dc.SetRGB(0, 0, 0)
-		dc.DrawRectangle(-6, -15, float64(car.WheelWidth), float64(car.WheelHeight))
-		dc.Fill()
-		dc.Pop()
+		opt.GeoM = car.wheelGeoM(i)
+		screen.DrawImage(car.wheelImage, opt)
 	}
+}
+
+// bodyGeoM places the body sprite: its (60, 30) point sits on the car's pivot,
+// and the sprite turns with the car.
+func (car *Car) bodyGeoM() ebiten.GeoM {
+	var g ebiten.GeoM
+	g.Translate(-60, -30)
+	g.Rotate(car.Rotation * math.Pi / 180)
+	g.Translate(car.Pivot.X, car.Pivot.Y)
+	return g
+}
+
+// wheelGeoM places wheel i: the rectangle is centred on the wheel's offset from
+// the pivot, the two front wheels (i < 2) additionally turn with the steering
+// angle, and the whole thing turns with the car.
+//
+// Ebiten applies a GeoM's calls in the order they are made, so these read as
+// the innermost transform first — the reverse of a nested push/pop stack.
+func (car *Car) wheelGeoM(i int) ebiten.GeoM {
+	var g ebiten.GeoM
+	g.Translate(-6, -15)
+	if i < 2 {
+		g.Rotate(car.WheelAngle * math.Pi / 180)
+	}
+	g.Translate(car.Wheels[i].X, car.Wheels[i].Y)
+	g.Rotate(car.Rotation * math.Pi / 180)
+	g.Translate(car.Pivot.X, car.Pivot.Y)
+	return g
 }
 
 func (car *Car) Move() error {

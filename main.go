@@ -154,8 +154,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.White)
 
 	for i := 0; i < len(g.car); i++ {
-		img := g.car[i].DrawCar()
-		screen.DrawImage(ebiten.NewImageFromImage(img), &ebiten.DrawImageOptions{})
+		g.car[i].DrawCar(screen)
 	}
 	for i := 0; i < len(g.bush); i++ {
 		g.bush[i].Draw(screen)
