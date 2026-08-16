@@ -38,9 +38,9 @@ func (p *Pause) Update() (Scene, error) {
 	case pauseResume:
 		return p.resume, nil
 	case pauseRestart:
-		return newGameplay(p.in), nil
+		return newGameplay(p.in, p.resume.level), nil
 	case pauseQuit:
-		return NewMenu(p.in), nil
+		return NewMenu(p.in, p.resume.level), nil
 	}
 
 	// Esc goes back a step everywhere in the game, and the step back from a
