@@ -4,8 +4,6 @@ import (
 	"math"
 	"reflect"
 	"testing"
-
-	"github.com/fogleman/gg"
 )
 
 // newTestCar builds a car in the same shape as main.go's createCar, without
@@ -95,15 +93,73 @@ func TestMoveAdvancesPivot(t *testing.T) {
 
 // The draw path must be free of side effects, otherwise the simulation speed
 // follows the display's refresh rate instead of Ebiten's fixed tick rate.
-func TestDrawWheelsDoesNotMutateCar(t *testing.T) {
+func TestDrawGeometryDoesNotMutateCar(t *testing.T) {
 	c := newTestCar()
 	c.RotateLeft = true
 	c.Steer()
 
 	before := *c
-	c.DrawWheels(gg.NewContext(640, 480))
+	c.bodyGeoM()
+	for i := range c.Wheels {
+		c.wheelGeoM(i)
+	}
 
 	if !reflect.DeepEqual(*c, before) {
-		t.Errorf("DrawWheels mutated the car:\n got %+v\nwant %+v", *c, before)
+		t.Errorf("computing the draw geometry mutated the car:\n got %+v\nwant %+v", *c, before)
 	}
+}
+
+// The sprites are placed by a single GeoM each rather than by a stack of nested
+// transforms, and Ebiten composes a GeoM's calls in the opposite order, so the
+// placement is worth pinning down.
+func TestBodyGeoMPlacesSpriteOnPivot(t *testing.T) {
+	c := newTestCar()
+	c.Rotation = 30
+
+	// The sprite's (60, 30) point is the car's pivot, whatever the rotation.
+	g := c.bodyGeoM()
+	x, y := g.Apply(60, 30)
+
+	if !closeTo(x, c.Pivot.X) || !closeTo(y, c.Pivot.Y) {
+		t.Errorf("body sprite pivot at (%v, %v), want (%v, %v)", x, y, c.Pivot.X, c.Pivot.Y)
+	}
+}
+
+func TestWheelGeoMPlacesWheels(t *testing.T) {
+	c := newTestCar()
+	c.Rotation = 30
+	c.WheelAngle = 20
+
+	for i := range c.Wheels {
+		g := c.wheelGeoM(i)
+		x, y := g.Apply(0, 0)
+		wantX, wantY := wantWheelCorner(c, i)
+
+		if !closeTo(x, wantX) || !closeTo(y, wantY) {
+			t.Errorf("wheel %d corner at (%v, %v), want (%v, %v)", i, x, y, wantX, wantY)
+		}
+	}
+}
+
+// wantWheelCorner is the wheel rectangle's top-left corner, worked out as the
+// chain of transforms the wheel sits under: offset within the wheel, steering
+// (front wheels only), the wheel's place on the body, the body's rotation, and
+// finally the pivot's position on screen.
+func wantWheelCorner(c *Car, i int) (float64, float64) {
+	x, y := -6.0, -15.0
+	if i < 2 {
+		x, y = rotate(x, y, c.WheelAngle)
+	}
+	x, y = x+c.Wheels[i].X, y+c.Wheels[i].Y
+	x, y = rotate(x, y, c.Rotation)
+	return x + c.Pivot.X, y + c.Pivot.Y
+}
+
+func rotate(x, y, degrees float64) (float64, float64) {
+	s, cos := math.Sincos(degrees * math.Pi / 180)
+	return x*cos - y*s, x*s + y*cos
+}
+
+func closeTo(got, want float64) bool {
+	return math.Abs(got-want) < 1e-9
 }
