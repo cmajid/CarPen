@@ -9,6 +9,8 @@ CarPen wrote with GoLang using [Ebiten](https://github.com/hajimehoshi/ebiten)
 
 ## Instructions
 
+Requires Go 1.25 or newer.
+
 1. Clone the project: `git clone https://github.com/cmajid/CarPen.git`
 2. Change directory to `CarPen/`: `cd CarPen/`
 3. Run `go run .` or run `go build` 
