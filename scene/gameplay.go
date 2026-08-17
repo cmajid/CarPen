@@ -152,52 +152,52 @@ func lotWalls(lot carpen.Lot) []*carpen.OBB {
 func (g *Gameplay) Update() (Scene, error) {
 	g.fade.update()
 
-	if g.in.IsKeyJustPressed(ebiten.KeyEscape) {
+	if justPressed(g.in, actionCancel) {
 		return newPause(g), nil
 	}
 	// Standing in for the win condition, which cannot tell the race is over
 	// until the cars can hit something (#20): Enter ends the race by hand.
-	if g.in.IsKeyJustPressed(ebiten.KeyEnter) {
+	if justPressed(g.in, actionFinish) {
 		return newResults(g.in, g.level), nil
 	}
 
-	// The key handlers only record intent; every change to Speed is made by
+	// The input handlers only record intent; every change to Speed is made by
 	// Car.Move(), which is the one place that honours MaxSpeed and the reverse
 	// limit.
-	if g.in.IsKeyJustPressed(ebiten.KeyUp) {
+	if justPressed(g.in, actionThrottle) {
 		g.cars[g.activeCar].Accelerate = true
 	}
-	if g.in.IsKeyJustPressed(ebiten.KeyDown) {
+	if justPressed(g.in, actionBrake) {
 		g.cars[g.activeCar].Decelerate = true
 	}
-	if g.in.IsKeyJustPressed(ebiten.KeyLeft) {
+	if justPressed(g.in, actionSteerLeft) {
 		g.cars[g.activeCar].RotateLeft = true
 	}
-	if g.in.IsKeyJustPressed(ebiten.KeyRight) {
+	if justPressed(g.in, actionSteerRight) {
 		g.cars[g.activeCar].RotateRight = true
 	}
 
-	if g.in.IsKeyJustReleased(ebiten.KeyUp) {
+	if justReleased(g.in, actionThrottle) {
 		g.cars[g.activeCar].Accelerate = false
 	}
-	if g.in.IsKeyJustReleased(ebiten.KeyDown) {
+	if justReleased(g.in, actionBrake) {
 		g.cars[g.activeCar].Decelerate = false
 	}
-	if g.in.IsKeyJustReleased(ebiten.KeyRight) {
+	if justReleased(g.in, actionSteerRight) {
 		g.cars[g.activeCar].RotateRight = false
 	}
-	if g.in.IsKeyJustReleased(ebiten.KeyLeft) {
+	if justReleased(g.in, actionSteerLeft) {
 		g.cars[g.activeCar].RotateLeft = false
 	}
-	// Tab hands the keys to the next car in the level, which is how the
+	// Swapping hands the keys to the next car in the level, which is how the
 	// prototype's two cars are still both drivable. It comes to nothing on a
 	// level with a single car, and goes for good once a parked car is something
 	// to be avoided rather than driven (#20).
-	if g.in.IsKeyJustReleased(ebiten.KeyTab) {
+	if justReleased(g.in, actionSwapCar) {
 		g.activeCar = (g.activeCar + 1) % len(g.cars)
 	}
 
-	if g.in.IsKeyJustPressed(ebiten.KeyF3) {
+	if justPressed(g.in, actionDebugBoxes) {
 		g.debugOBB = !g.debugOBB
 	}
 
@@ -344,10 +344,14 @@ const bayLineWidth = 4
 func (g *Gameplay) drawHUD(screen *ebiten.Image) {
 	fillRect(screen, 0, 0, float64(screen.Bounds().Dx()), 26, colourHUD)
 
-	drawText(screen, "Arrows  Drive", fontPrompt, 14, 13, colourText, text.AlignStart, text.AlignCenter)
-	drawText(screen, "Tab  Swap car", fontPrompt, 116, 13, colourTextMuted, text.AlignStart, text.AlignCenter)
-	drawText(screen, "Enter  Finish", fontPrompt, 218, 13, colourTextMuted, text.AlignStart, text.AlignCenter)
-	drawText(screen, "Esc  Pause", fontPrompt, 320, 13, colourAccent, text.AlignStart, text.AlignCenter)
+	// The triggers are the half of the pad worth naming: a player reaches for
+	// the stick to steer without being told, and reaches for it to accelerate
+	// too — this is the line that puts that hand right.
+	drawText(screen, hint(g.in, "Arrows  Drive", "RT / LT  Drive"), fontPrompt, 14, 13, colourText, text.AlignStart, text.AlignCenter)
+	drawText(screen, hint(g.in, "Tab  Swap car", "X  Swap car"), fontPrompt, 116, 13, colourTextMuted, text.AlignStart, text.AlignCenter)
+	drawText(screen, hint(g.in, "Enter  Finish", "Y  Finish"), fontPrompt, 218, 13, colourTextMuted, text.AlignStart, text.AlignCenter)
+	drawText(screen, hint(g.in, "Esc  Pause", "Start  Pause"), fontPrompt, 320, 13, colourAccent, text.AlignStart, text.AlignCenter)
+	// The box overlay is on no pad button, so its key is named either way.
 	drawText(screen, "F3  Boxes", fontPrompt, 414, 13, colourTextMuted, text.AlignStart, text.AlignCenter)
 
 	drawText(screen, fmt.Sprintf("%0.0f TPS", ebiten.ActualTPS()), fontPrompt, float64(screen.Bounds().Dx())-14, 13, colourTextMuted, text.AlignEnd, text.AlignCenter)

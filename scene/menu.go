@@ -50,9 +50,9 @@ func (m *Menu) Update() (Scene, error) {
 		return nil, ebiten.Termination
 	}
 
-	// Esc is the way out of every other screen, so it is the way out of the game
-	// here.
-	if m.in.IsKeyJustPressed(ebiten.KeyEscape) {
+	// Backing out is the way out of every other screen, so it is the way out of
+	// the game here.
+	if justPressed(m.in, actionCancel) {
 		return nil, ebiten.Termination
 	}
 
@@ -70,9 +70,9 @@ func (m *Menu) Draw(screen *ebiten.Image) {
 	m.list.draw(screen)
 
 	drawPrompts(screen,
-		prompt{key: "Up / Down", does: "Move"},
-		prompt{key: "Enter", does: "Select"},
-		prompt{key: "Esc", does: "Quit"},
+		promptFor(m.in, "Up / Down", "Stick", "Move"),
+		promptFor(m.in, "Enter", "A", "Select"),
+		promptFor(m.in, "Esc", "B", "Quit"),
 	)
 	m.fade.draw(screen)
 }

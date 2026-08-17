@@ -8,20 +8,29 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// fakeInput is the keyboard and mouse the tests work the game with. A real
+// fakeInput is the keyboard, mouse and pad the tests work the game with. A real
 // keyboard reports a key as just pressed for the one tick it goes down, so a
 // test sets the keys for the tick it is about to run and they are gone by the
-// next one.
+// next one; the pad's buttons work the same way.
 type fakeInput struct {
 	pressed  map[ebiten.Key]bool
 	released map[ebiten.Key]bool
 	cursorX  int
 	cursorY  int
 	clicked  bool
+
+	padPressed  map[ebiten.StandardGamepadButton]bool
+	padReleased map[ebiten.StandardGamepadButton]bool
+	padOn       bool
 }
 
 func newFakeInput() *fakeInput {
-	return &fakeInput{pressed: map[ebiten.Key]bool{}, released: map[ebiten.Key]bool{}}
+	return &fakeInput{
+		pressed:     map[ebiten.Key]bool{},
+		released:    map[ebiten.Key]bool{},
+		padPressed:  map[ebiten.StandardGamepadButton]bool{},
+		padReleased: map[ebiten.StandardGamepadButton]bool{},
+	}
 }
 
 func (f *fakeInput) IsKeyJustPressed(key ebiten.Key) bool { return f.pressed[key] }
@@ -31,6 +40,16 @@ func (f *fakeInput) IsKeyJustReleased(key ebiten.Key) bool { return f.released[k
 func (f *fakeInput) CursorPosition() (int, int) { return f.cursorX, f.cursorY }
 
 func (f *fakeInput) IsMouseButtonJustPressed(ebiten.MouseButton) bool { return f.clicked }
+
+func (f *fakeInput) IsGamepadButtonJustPressed(b ebiten.StandardGamepadButton) bool {
+	return f.padPressed[b]
+}
+
+func (f *fakeInput) IsGamepadButtonJustReleased(b ebiten.StandardGamepadButton) bool {
+	return f.padReleased[b]
+}
+
+func (f *fakeInput) GamepadConnected() bool { return f.padOn }
 
 // press makes keys the only ones going down on the next tick.
 func (f *fakeInput) press(keys ...ebiten.Key) {
@@ -48,6 +67,25 @@ func (f *fakeInput) release(keys ...ebiten.Key) {
 	}
 }
 
+// pressPad and releasePad are press and release for a player holding a pad
+// instead. Plugging one in is part of pressing it: nothing reports a button
+// from a pad that is not there.
+func (f *fakeInput) pressPad(buttons ...ebiten.StandardGamepadButton) {
+	f.clear()
+	f.padOn = true
+	for _, button := range buttons {
+		f.padPressed[button] = true
+	}
+}
+
+func (f *fakeInput) releasePad(buttons ...ebiten.StandardGamepadButton) {
+	f.clear()
+	f.padOn = true
+	for _, button := range buttons {
+		f.padReleased[button] = true
+	}
+}
+
 // moveTo puts the mouse somewhere, as a player moving it would. Where the mouse
 // is outlives a tick; what was pressed on that tick does not.
 func (f *fakeInput) moveTo(x, y int) {
@@ -61,6 +99,8 @@ func (f *fakeInput) click() {
 func (f *fakeInput) clear() {
 	clear(f.pressed)
 	clear(f.released)
+	clear(f.padPressed)
+	clear(f.padReleased)
 	f.clicked = false
 }
 

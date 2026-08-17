@@ -45,7 +45,7 @@ func (r *Results) Update() (Scene, error) {
 		return NewMenu(r.in, r.level), nil
 	}
 
-	if r.in.IsKeyJustPressed(ebiten.KeyEscape) {
+	if justPressed(r.in, actionCancel) {
 		return NewMenu(r.in, r.level), nil
 	}
 
@@ -62,9 +62,9 @@ func (r *Results) Draw(screen *ebiten.Image) {
 	r.list.draw(screen)
 
 	drawPrompts(screen,
-		prompt{key: "Up / Down", does: "Move"},
-		prompt{key: "Enter", does: "Select"},
-		prompt{key: "Esc", does: "Menu"},
+		promptFor(r.in, "Up / Down", "Stick", "Move"),
+		promptFor(r.in, "Enter", "A", "Select"),
+		promptFor(r.in, "Esc", "B", "Menu"),
 	)
 	r.fade.draw(screen)
 }

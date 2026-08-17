@@ -9,8 +9,8 @@ import (
 
 // menuList is a column of choices with one of them in focus. Every screen that
 // asks the player to pick something is built from one, so picking works the same
-// way throughout: Up and Down move, Enter or Space chooses, and the mouse can do
-// both instead.
+// way throughout: Up and Down move, Enter or Space chooses, and the mouse or the
+// pad can do both instead.
 //
 // The list wraps at both ends, which is what a linear menu is expected to do
 // (Xbox Accessibility Guideline 112) and means the whole of it can be reached by
@@ -45,10 +45,10 @@ func newMenuList(x, y, width float64, items ...string) *menuList {
 // update moves the focus around and reports the item the player chose, or
 // nothingChosen.
 func (l *menuList) update(in Input) int {
-	if in.IsKeyJustPressed(ebiten.KeyDown) || in.IsKeyJustPressed(ebiten.KeyTab) {
+	if justPressed(in, actionMenuNext) {
 		l.move(1)
 	}
-	if in.IsKeyJustPressed(ebiten.KeyUp) {
+	if justPressed(in, actionMenuPrev) {
 		l.move(-1)
 	}
 
@@ -60,7 +60,7 @@ func (l *menuList) update(in Input) int {
 	}
 	l.cursor, l.cursorKnown = cursor, true
 
-	if in.IsKeyJustPressed(ebiten.KeyEnter) || in.IsKeyJustPressed(ebiten.KeySpace) {
+	if justPressed(in, actionConfirm) {
 		return l.selected
 	}
 	if in.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {

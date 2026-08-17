@@ -43,9 +43,9 @@ func (p *Pause) Update() (Scene, error) {
 		return NewMenu(p.in, p.resume.level), nil
 	}
 
-	// Esc goes back a step everywhere in the game, and the step back from a
-	// paused race is the race.
-	if p.in.IsKeyJustPressed(ebiten.KeyEscape) {
+	// Backing out goes back a step everywhere in the game, and the step back
+	// from a paused race is the race.
+	if justPressed(p.in, actionCancel) {
 		return p.resume, nil
 	}
 
@@ -64,8 +64,8 @@ func (p *Pause) Draw(screen *ebiten.Image) {
 	p.list.draw(screen)
 
 	drawPrompts(screen,
-		prompt{key: "Up / Down", does: "Move"},
-		prompt{key: "Enter", does: "Select"},
-		prompt{key: "Esc", does: "Resume"},
+		promptFor(p.in, "Up / Down", "Stick", "Move"),
+		promptFor(p.in, "Enter", "A", "Select"),
+		promptFor(p.in, "Esc", "B", "Resume"),
 	)
 }

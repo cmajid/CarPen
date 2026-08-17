@@ -23,7 +23,7 @@ func main() {
 
 	// The menu opens on the first level. Working through the rest of them is
 	// the level progression, which comes later in the roadmap (#17).
-	game := scene.NewManager(screenWidth, screenHeight, scene.NewMenu(scene.Keyboard{}, levels[0]))
+	game := scene.NewManager(screenWidth, screenHeight, scene.NewMenu(scene.NewDevices(), levels[0]))
 
 	ebiten.SetWindowSize(screenWidth, screenHeight)
 	ebiten.SetWindowTitle("Car Pen")

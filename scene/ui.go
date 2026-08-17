@@ -104,6 +104,30 @@ type prompt struct {
 	key, does string
 }
 
+// hint picks the label for whatever the player has in their hands: the pad's
+// button when a pad is plugged in, the key when it is not. Telling somebody
+// holding a pad to press Esc is telling them nothing, and a screen listing both
+// at once is twice as much to read as either is worth.
+//
+// Both labels are given whole rather than built up, so that naming a key costs
+// nothing on the frames it is drawn.
+//
+// The pad's buttons are named the way the hardware in front of the player is
+// labelled — Ebiten's standard layout puts A where an Xbox pad has A, which is
+// where a DualSense has cross; naming it for one of the two is the lesser
+// wrong, and Xbox is the pad this is most likely to be played with.
+func hint(in Input, key, button string) string {
+	if in.GamepadConnected() {
+		return button
+	}
+	return key
+}
+
+// promptFor is hint as one of the prompts along the bottom of a screen.
+func promptFor(in Input, key, button, does string) prompt {
+	return prompt{key: hint(in, key, button), does: does}
+}
+
 // drawPrompts writes the prompts in a row along the bottom of the screen. They
 // are the same shape and in the same place on every screen, so the keys are
 // learned once rather than hunted for screen by screen.
