@@ -37,7 +37,7 @@ func newTestCar() *Car {
 
 func TestUpdateStepsWheelAngleOncePerTick(t *testing.T) {
 	c := newTestCar()
-	c.RotateLeft = true
+	c.Steering = -1
 
 	c.Update()
 
@@ -46,19 +46,22 @@ func TestUpdateStepsWheelAngleOncePerTick(t *testing.T) {
 	}
 }
 
+// Full lock is as far as the wheels go, whatever is asking. The reading beyond
+// the ends is the guard against a pad reporting a stick past its own stop.
 func TestSteerClampsToMaxAngle(t *testing.T) {
 	for _, tc := range []struct {
-		name  string
-		left  bool
-		right bool
-		want  float64
+		name     string
+		steering float64
+		want     float64
 	}{
-		{name: "left", left: true, want: -45},
-		{name: "right", right: true, want: 45},
+		{name: "left", steering: -1, want: -45},
+		{name: "right", steering: 1, want: 45},
+		{name: "past the left stop", steering: -1.4, want: -45},
+		{name: "past the right stop", steering: 1.4, want: 45},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := newTestCar()
-			c.RotateLeft, c.RotateRight = tc.left, tc.right
+			c.Steering = tc.steering
 
 			for i := 0; i < 200; i++ {
 				c.Steer()
@@ -68,6 +71,69 @@ func TestSteerClampsToMaxAngle(t *testing.T) {
 				t.Errorf("WheelAngle = %v, want %v", c.WheelAngle, tc.want)
 			}
 		})
+	}
+}
+
+// The whole point of a stick over a pair of arrow keys: half over is half the
+// angle, and the wheels stop there rather than winding on to full lock the way
+// a held key does.
+func TestSteerSettlesWhereTheWheelIsAskedFor(t *testing.T) {
+	for _, tc := range []struct {
+		steering float64
+		want     float64
+	}{
+		{steering: -0.5, want: -22.5},
+		{steering: 0.25, want: 11.25},
+		{steering: 0.75, want: 33.75},
+	} {
+		c := newTestCar()
+		c.Steering = tc.steering
+
+		for i := 0; i < 200; i++ {
+			c.Steer()
+		}
+
+		if !closeTo(c.WheelAngle, tc.want) {
+			t.Errorf("steering %v settled the wheels at %v, want %v", tc.steering, c.WheelAngle, tc.want)
+		}
+	}
+}
+
+// Asking for less than the wheels are already giving winds them back, which is
+// how a stick eased off straightens the car without being pushed the other way.
+func TestSteerWindsBackTowardsALesserAngle(t *testing.T) {
+	c := newTestCar()
+	c.Steering = -1
+	for i := 0; i < 200; i++ {
+		c.Steer()
+	}
+
+	c.Steering = -0.25
+	for i := 0; i < 200; i++ {
+		c.Steer()
+	}
+
+	if !closeTo(c.WheelAngle, -11.25) {
+		t.Errorf("WheelAngle = %v, want the wheels wound back to the lesser angle", c.WheelAngle)
+	}
+}
+
+// Asking for nothing is not asking for straight. A wheel let go of stays where
+// it was left — the car has never had self-centring, and gaining it would be a
+// change to how it drives rather than to how finely it is steered.
+func TestSteerHoldsTheWheelWhenNothingIsAsked(t *testing.T) {
+	c := newTestCar()
+	c.Steering = -1
+	c.Steer()
+	held := c.WheelAngle
+
+	c.Steering = 0
+	for i := 0; i < 100; i++ {
+		c.Steer()
+	}
+
+	if c.WheelAngle != held {
+		t.Errorf("WheelAngle drifted to %v with nothing asked, want it left at %v", c.WheelAngle, held)
 	}
 }
 
@@ -87,7 +153,7 @@ func TestMoveAdvancesPivot(t *testing.T) {
 // speed settles within one acceleration step of the limit.
 func TestMoveClampsForwardSpeedToMaxSpeed(t *testing.T) {
 	c := newTestCar()
-	c.Accelerate = true
+	c.Throttle = 1
 
 	for i := 0; i < 200; i++ {
 		c.Move()
@@ -108,7 +174,7 @@ func TestMoveClampsReverseSpeed(t *testing.T) {
 	const maxReverse = -3.0
 
 	c := newTestCar()
-	c.Decelerate = true
+	c.Brake = 1
 
 	for i := 0; i < 200; i++ {
 		c.Move()
@@ -123,8 +189,56 @@ func TestMoveClampsReverseSpeed(t *testing.T) {
 	}
 }
 
-// With no key held the car coasts to a full stop and stays there, rather than
-// creeping backwards past zero.
+// A pedal held part way puts down that much of the acceleration, which is what
+// a trigger buys over a key: the same car pulled away gently.
+func TestMovePutsDownAsMuchOfThePedalAsIsAskedFor(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		throttle float64
+		brake    float64
+		want     float64
+	}{
+		{name: "throttle to the floor", throttle: 1, want: 0.2},
+		{name: "throttle half way", throttle: 0.5, want: 0.1},
+		{name: "throttle a quarter", throttle: 0.25, want: 0.05},
+		{name: "brake half way", brake: 0.5, want: -0.1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newTestCar()
+			c.Speed = 0 // from rest, so nothing else is moving the speed
+			c.Throttle, c.Brake = tc.throttle, tc.brake
+
+			c.Move()
+
+			if !closeTo(c.Speed, tc.want) {
+				t.Errorf("Speed after one tick = %v, want %v", c.Speed, tc.want)
+			}
+		})
+	}
+}
+
+// A pedal barely off its stop is still the player asking for something, and the
+// car has to answer it rather than round it away to nothing.
+func TestMoveCreepsOnTheGentlestThrottle(t *testing.T) {
+	c := newTestCar()
+	c.Speed = 0
+	c.Throttle = 0.05
+
+	for i := 0; i < 10; i++ {
+		c.Move()
+	}
+
+	if c.Speed <= 0 {
+		t.Errorf("Speed after ten gentle ticks = %v, want the car creeping forward", c.Speed)
+	}
+	if c.Speed >= c.MaxSpeed {
+		t.Errorf("Speed after ten gentle ticks = %v, want a crawl and not a launch", c.Speed)
+	}
+}
+
+// The car slowing itself is not the player asking for anything, so coasting is
+// unscaled: with nothing held the car rolls to a full stop and stays there,
+// rather than creeping backwards past zero.
 func TestMoveCoastsToAStop(t *testing.T) {
 	c := newTestCar()
 
@@ -218,7 +332,7 @@ func TestUpdateRearPivotAbsTurnsWithTheCar(t *testing.T) {
 // follows the display's refresh rate instead of Ebiten's fixed tick rate.
 func TestDrawGeometryDoesNotMutateCar(t *testing.T) {
 	c := newTestCar()
-	c.RotateLeft = true
+	c.Steering = -1
 	c.Steer()
 
 	before := *c

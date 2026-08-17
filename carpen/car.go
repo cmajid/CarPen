@@ -9,10 +9,20 @@ import (
 
 type Car struct {
 	IsActive bool
-	RotateLeft,
-	RotateRight,
-	Accelerate,
-	Decelerate bool
+
+	// Throttle and Brake are how hard each pedal is being asked for, from 0
+	// (not at all) to 1 (to the floor), and Steering is where the front wheels
+	// are being asked to point, from −1 (full left) through 0 to 1 (full
+	// right). A key has only the two ends to offer; a trigger and a stick have
+	// everything in between, which is the whole reason these are not the
+	// booleans they were.
+	//
+	// Brake is the one pedal that slows the car and then backs it up, as it
+	// always has.
+	Throttle,
+	Brake,
+	Steering float64
+
 	WheelWidth,
 	WheelHeight int
 	WheelRotationStep,
@@ -72,12 +82,25 @@ func (car *Car) Update() {
 
 // Steer advances the front wheels towards the angle the player is asking for
 // and recomputes the direction the car travels in.
+//
+// Steering says where the wheels are wanted, not which way to turn them: the
+// deflection picks an angle between straight and full lock, and the wheels
+// travel to it at WheelRotationStep a tick. A key only ever asks for full lock,
+// so holding an arrow steers exactly as it always did, while a stick pushed
+// half way settles half way.
+//
+// Asking for nothing is not the same as asking for straight. A wheel let go of
+// stays where it was left, as it always has, and is straightened by steering
+// the other way rather than by letting go: self-centring would be a change to
+// how the car drives rather than to how finely it is steered.
 func (car *Car) Steer() {
-	if car.RotateLeft && car.WheelAngle > -car.WheelMaxAngle {
-		car.WheelAngle = math.Max(car.WheelAngle-car.WheelRotationStep, -car.WheelMaxAngle)
-	}
-	if car.RotateRight && car.WheelAngle < car.WheelMaxAngle {
-		car.WheelAngle = math.Min(car.WheelAngle+car.WheelRotationStep, car.WheelMaxAngle)
+	if car.Steering != 0 {
+		target := clamp(car.Steering, -1, 1) * car.WheelMaxAngle
+		if target < car.WheelAngle {
+			car.WheelAngle = math.Max(car.WheelAngle-car.WheelRotationStep, target)
+		} else {
+			car.WheelAngle = math.Min(car.WheelAngle+car.WheelRotationStep, target)
+		}
 	}
 
 	car.DirectionPivot.X = 50*math.Cos((car.WheelAngle+car.Rotation-90)*math.Pi/180) + car.FrontPivot.X
@@ -177,16 +200,23 @@ func (car *Car) UpdateRearPivotAbs() {
 	}
 }
 
+// Move is the one place Speed changes. A pedal held down part way puts down
+// that much of the car's acceleration, so a feathered trigger pulls away gently
+// where a key, which has only the floor to offer, pulls away as briskly as it
+// always did. The car slowing itself is not the player asking for anything, so
+// coasting and the crawl back to a stop are unscaled.
 func (car *Car) Move() {
+	throttle := clamp(car.Throttle, 0, 1)
+	brake := clamp(car.Brake, 0, 1)
 
 	forceStop := true
-	moveFast := car.Accelerate && car.Speed < car.MaxSpeed
+	moveFast := throttle > 0 && car.Speed < car.MaxSpeed
 	tryToStop := car.Speed > 0
-	moveBackward := car.Decelerate && car.Speed > -3
+	moveBackward := brake > 0 && car.Speed > -3
 	tryToStopBackward := car.Speed < -0.3
 
 	if moveFast {
-		car.Speed += car.Acceleration
+		car.Speed += car.Acceleration * throttle
 		forceStop = false
 	} else if tryToStop {
 		car.Speed -= car.Acceleration
@@ -194,7 +224,7 @@ func (car *Car) Move() {
 	}
 
 	if moveBackward {
-		car.Speed -= car.Acceleration
+		car.Speed -= car.Acceleration * brake
 		forceStop = false
 	} else if tryToStopBackward {
 		car.Speed += car.Acceleration
@@ -216,4 +246,11 @@ func (car *Car) Move() {
 	car.Rotation = rotation
 
 	car.UpdateRearPivotAbs()
+}
+
+// clamp holds v inside low..high. The controls are taken as read rather than
+// trusted: a pad driver that reports a stick a shade past its stop must not be
+// able to steer the wheels past full lock.
+func clamp(v, low, high float64) float64 {
+	return math.Min(math.Max(v, low), high)
 }

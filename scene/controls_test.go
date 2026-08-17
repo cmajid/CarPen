@@ -1,6 +1,7 @@
 package scene
 
 import (
+	"math"
 	"testing"
 
 	"github.com/cmajid/carpen/carpen"
@@ -19,10 +20,10 @@ func TestGameplayDrivesTheActiveCarOnThePad(t *testing.T) {
 		button ebiten.StandardGamepadButton
 		held   func(c carpen.Car) bool
 	}{
-		{name: "right trigger", button: ebiten.StandardGamepadButtonFrontBottomRight, held: func(c carpen.Car) bool { return c.Accelerate }},
-		{name: "left trigger", button: ebiten.StandardGamepadButtonFrontBottomLeft, held: func(c carpen.Car) bool { return c.Decelerate }},
-		{name: "stick or d-pad left", button: ebiten.StandardGamepadButtonLeftLeft, held: func(c carpen.Car) bool { return c.RotateLeft }},
-		{name: "stick or d-pad right", button: ebiten.StandardGamepadButtonLeftRight, held: func(c carpen.Car) bool { return c.RotateRight }},
+		{name: "right trigger", button: ebiten.StandardGamepadButtonFrontBottomRight, held: func(c carpen.Car) bool { return c.Throttle == 1 }},
+		{name: "left trigger", button: ebiten.StandardGamepadButtonFrontBottomLeft, held: func(c carpen.Car) bool { return c.Brake == 1 }},
+		{name: "d-pad left", button: ebiten.StandardGamepadButtonLeftLeft, held: func(c carpen.Car) bool { return c.Steering == -1 }},
+		{name: "d-pad right", button: ebiten.StandardGamepadButtonLeftRight, held: func(c carpen.Car) bool { return c.Steering == 1 }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			in := newFakeInput()
@@ -64,15 +65,131 @@ func TestGameplayStickDoesNotDriveOnThePad(t *testing.T) {
 			}
 
 			car := game.cars[game.activeCar]
-			if car.Accelerate {
+			if car.Throttle != 0 {
 				t.Errorf("%s accelerated; only the right trigger should", tc.name)
 			}
-			if car.Decelerate {
+			if car.Brake != 0 {
 				t.Errorf("%s braked; only the left trigger should", tc.name)
 			}
 		})
 	}
 }
+
+// The stick's travel is now read as travel and not as a press, so the rule that
+// it does not drive has to hold for the axis itself and not only for the four
+// directions it stands in for.
+func TestGameplayStickAxisDoesNotDriveOnThePad(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		x, y float64
+	}{
+		{name: "pushed forward", y: -1},
+		{name: "pulled back", y: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := newFakeInput()
+			game := newGameplay(in, testLevel(t))
+
+			in.holdStick(tc.x, tc.y)
+			if _, err := game.Update(); err != nil {
+				t.Fatalf("Update: %v", err)
+			}
+
+			car := game.cars[game.activeCar]
+			if car.Throttle != 0 || car.Brake != 0 {
+				t.Errorf("the stick %s drove the car: throttle %v, brake %v", tc.name, car.Throttle, car.Brake)
+			}
+		})
+	}
+}
+
+// The point of the pad: how far the stick is pushed is how far the wheels are
+// asked over, so a car can be placed in a bay at a lean the keyboard's one
+// steering angle cannot ask for.
+func TestGameplaySteersByHowFarTheStickIsPushed(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		x    float64
+		want float64
+	}{
+		{name: "leant left", x: -0.575, want: -0.5},
+		{name: "leant right", x: 0.575, want: 0.5},
+		{name: "hard over left", x: -1, want: -1},
+		{name: "hard over right", x: 1, want: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := newFakeInput()
+			game := newGameplay(in, testLevel(t))
+
+			in.holdStick(tc.x, 0)
+			if _, err := game.Update(); err != nil {
+				t.Fatalf("Update: %v", err)
+			}
+
+			if got := game.cars[game.activeCar].Steering; !nearly(got, tc.want) {
+				t.Errorf("stick at %v steered %v, want %v", tc.x, got, tc.want)
+			}
+		})
+	}
+}
+
+// A trigger squeezed part way asks for part of the acceleration, which is what
+// makes pulling away on a pad something other than all or nothing.
+func TestGameplayThrottleAndBrakeFollowTheTriggers(t *testing.T) {
+	in := newFakeInput()
+	game := newGameplay(in, testLevel(t))
+
+	in.holdPad(0.575, ebiten.StandardGamepadButtonFrontBottomRight, ebiten.StandardGamepadButtonFrontBottomLeft)
+	if _, err := game.Update(); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	car := game.cars[game.activeCar]
+	if !nearly(car.Throttle, 0.5) {
+		t.Errorf("a half-squeezed right trigger gave throttle %v, want 0.5", car.Throttle)
+	}
+	if !nearly(car.Brake, 0.5) {
+		t.Errorf("a half-squeezed left trigger gave brake %v, want 0.5", car.Brake)
+	}
+}
+
+// A pad left alone is not a pad being asked anything of. Sticks wander and
+// triggers rest short of zero, and a car that crept off on its own would be
+// blamed on the game rather than on the hardware.
+func TestGameplayIgnoresAPadAtRest(t *testing.T) {
+	in := newFakeInput()
+	game := newGameplay(in, testLevel(t))
+
+	in.holdStick(0.1, -0.1)
+	in.padValue[ebiten.StandardGamepadButtonFrontBottomRight] = 0.1
+	if _, err := game.Update(); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	if car := game.cars[game.activeCar]; car.Throttle != 0 || car.Brake != 0 || car.Steering != 0 {
+		t.Errorf("a pad at rest drove the car: %+v", car)
+	}
+}
+
+// A keyboard has only the two ends to offer, so a key held is the whole way
+// over however gently the other hand is resting on a stick.
+func TestKeysAskForEverythingWhateverThePadIsDoing(t *testing.T) {
+	in := newFakeInput()
+	game := newGameplay(in, testLevel(t))
+
+	in.holdStick(0.575, 0)
+	in.pressed[ebiten.KeyLeft] = true
+	if _, err := game.Update(); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	// Left full over against the stick's half right: −1 + 0.5.
+	if got := game.cars[game.activeCar].Steering; !nearly(got, -0.5) {
+		t.Errorf("Steering = %v, want the key asking for all of its side", got)
+	}
+}
+
+func nearly(got, want float64) bool { return math.Abs(got-want) < 1e-9 }
 
 // The same stick that must not drive still moves a menu, because a menu has
 // nothing else for it to do.
@@ -97,7 +214,7 @@ func TestGameplayLetsGoOfTheCarOnThePad(t *testing.T) {
 	if _, err := game.Update(); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	if !game.cars[game.activeCar].Accelerate {
+	if game.cars[game.activeCar].Throttle == 0 {
 		t.Fatal("the trigger did not get the car moving")
 	}
 
@@ -105,7 +222,7 @@ func TestGameplayLetsGoOfTheCarOnThePad(t *testing.T) {
 	if _, err := game.Update(); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	if game.cars[game.activeCar].Accelerate {
+	if game.cars[game.activeCar].Throttle != 0 {
 		t.Error("the car kept accelerating after the trigger came up")
 	}
 }

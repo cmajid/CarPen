@@ -125,6 +125,27 @@ func (g *gamepad) justReleased(button ebiten.StandardGamepadButton) bool {
 	return isDirection && was && !now
 }
 
+// buttonValue and axisValue are the pad read as it stands rather than on its
+// edges: the trigger's pull and the stick's lean, which is what the car is
+// steered and driven by. The d-pad emulation above has no part in these — a
+// stick is already an axis, and standing in for a button would only throw its
+// travel away.
+func (g *gamepad) buttonValue(button ebiten.StandardGamepadButton) float64 {
+	g.refresh()
+	if !g.found {
+		return 0
+	}
+	return ebiten.StandardGamepadButtonValue(g.id, button)
+}
+
+func (g *gamepad) axisValue(axis ebiten.StandardGamepadAxis) float64 {
+	g.refresh()
+	if !g.found {
+		return 0
+	}
+	return ebiten.StandardGamepadAxisValue(g.id, axis)
+}
+
 // refresh looks for the pad and moves the stick on, once per tick however often
 // it is called.
 func (g *gamepad) refresh() {

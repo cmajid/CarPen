@@ -22,6 +22,13 @@ type fakeInput struct {
 	padPressed  map[ebiten.StandardGamepadButton]bool
 	padReleased map[ebiten.StandardGamepadButton]bool
 	padOn       bool
+
+	// padValue and axes are the pad's analogue half — a trigger held part way,
+	// a stick leant on. A button pressed without one of these is a button to
+	// the floor, which is what every test written before the pad had any travel
+	// meant by pressing it.
+	padValue map[ebiten.StandardGamepadButton]float64
+	axes     map[ebiten.StandardGamepadAxis]float64
 }
 
 func newFakeInput() *fakeInput {
@@ -30,12 +37,18 @@ func newFakeInput() *fakeInput {
 		released:    map[ebiten.Key]bool{},
 		padPressed:  map[ebiten.StandardGamepadButton]bool{},
 		padReleased: map[ebiten.StandardGamepadButton]bool{},
+		padValue:    map[ebiten.StandardGamepadButton]float64{},
+		axes:        map[ebiten.StandardGamepadAxis]float64{},
 	}
 }
 
 func (f *fakeInput) IsKeyJustPressed(key ebiten.Key) bool { return f.pressed[key] }
 
 func (f *fakeInput) IsKeyJustReleased(key ebiten.Key) bool { return f.released[key] }
+
+// IsKeyPressed is the key still being held on the tick it went down. A test
+// says what is held one tick at a time, so the two are the same thing here.
+func (f *fakeInput) IsKeyPressed(key ebiten.Key) bool { return f.pressed[key] }
 
 func (f *fakeInput) CursorPosition() (int, int) { return f.cursorX, f.cursorY }
 
@@ -48,6 +61,18 @@ func (f *fakeInput) IsGamepadButtonJustPressed(b ebiten.StandardGamepadButton) b
 func (f *fakeInput) IsGamepadButtonJustReleased(b ebiten.StandardGamepadButton) bool {
 	return f.padReleased[b]
 }
+
+func (f *fakeInput) GamepadButtonValue(b ebiten.StandardGamepadButton) float64 {
+	if value, held := f.padValue[b]; held {
+		return value
+	}
+	if f.padPressed[b] {
+		return 1
+	}
+	return 0
+}
+
+func (f *fakeInput) GamepadAxisValue(a ebiten.StandardGamepadAxis) float64 { return f.axes[a] }
 
 func (f *fakeInput) GamepadConnected() bool { return f.padOn }
 
@@ -86,6 +111,26 @@ func (f *fakeInput) releasePad(buttons ...ebiten.StandardGamepadButton) {
 	}
 }
 
+// holdPad presses buttons only part of the way down, the way a trigger rests
+// under a finger that has not committed. Pressing them the whole way is what
+// pressPad already does.
+func (f *fakeInput) holdPad(value float64, buttons ...ebiten.StandardGamepadButton) {
+	f.clear()
+	f.padOn = true
+	for _, button := range buttons {
+		f.padValue[button] = value
+	}
+}
+
+// holdStick leans the left stick somewhere, in Ebiten's −1..1 with up and left
+// negative.
+func (f *fakeInput) holdStick(x, y float64) {
+	f.clear()
+	f.padOn = true
+	f.axes[ebiten.StandardGamepadAxisLeftStickHorizontal] = x
+	f.axes[ebiten.StandardGamepadAxisLeftStickVertical] = y
+}
+
 // moveTo puts the mouse somewhere, as a player moving it would. Where the mouse
 // is outlives a tick; what was pressed on that tick does not.
 func (f *fakeInput) moveTo(x, y int) {
@@ -101,6 +146,8 @@ func (f *fakeInput) clear() {
 	clear(f.released)
 	clear(f.padPressed)
 	clear(f.padReleased)
+	clear(f.padValue)
+	clear(f.axes)
 	f.clicked = false
 }
 
@@ -354,23 +401,55 @@ func TestPauseFreezesTheCars(t *testing.T) {
 	}
 }
 
-// Pausing lets go of the wheel. Driving is worked out from presses and releases,
-// so a key released during the pause is never seen coming up, and the car would
-// otherwise carry on accelerating after resuming with nothing held down.
+// Pausing lets go of the wheel. Only the car being driven is read each tick, so
+// a car left holding the accelerator holds it for as long as nobody is driving
+// it, and the race would come back with the car already flat out.
 func TestPauseReleasesHeldControls(t *testing.T) {
 	in := newFakeInput()
 	game := newGameplay(in, testLevel(t))
 	m := NewManager(640, 480, game)
 
 	tick(t, m, in, ebiten.KeyUp, ebiten.KeyLeft)
-	if !game.cars[0].Accelerate || !game.cars[0].RotateLeft {
+	if game.cars[0].Throttle == 0 || game.cars[0].Steering == 0 {
 		t.Fatal("holding Up and Left did not reach the car")
 	}
 
 	tick(t, m, in, ebiten.KeyEscape)
 
-	if car := game.cars[0]; car.Accelerate || car.Decelerate || car.RotateLeft || car.RotateRight {
+	if car := game.cars[0]; car.Throttle != 0 || car.Brake != 0 || car.Steering != 0 {
 		t.Errorf("car still driving itself after the pause: %+v", car)
+	}
+}
+
+// Swapping lets go of the wheel for the same reason pausing does, and used not
+// to: the car handed over kept whatever it was last told, and a swap made with
+// the accelerator down left it flat out for the rest of the race with nothing
+// able to lift it.
+func TestSwappingCarsReleasesTheCarHandedOver(t *testing.T) {
+	in := newFakeInput()
+	game := newGameplay(in, testLevel(t))
+
+	in.press(ebiten.KeyUp)
+	if _, err := game.Update(); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if game.cars[0].Throttle == 0 {
+		t.Fatal("holding Up did not reach the car")
+	}
+
+	// Tab swaps on the way up, and the accelerator is still down as it does.
+	in.clear()
+	in.released[ebiten.KeyTab] = true
+	in.pressed[ebiten.KeyUp] = true
+	if _, err := game.Update(); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	if game.activeCar != 1 {
+		t.Fatalf("active car = %d, want the swap to have happened", game.activeCar)
+	}
+	if car := game.cars[0]; car.Throttle != 0 || car.Brake != 0 || car.Steering != 0 {
+		t.Errorf("the car handed over is still driving itself: %+v", car)
 	}
 }
 
@@ -419,10 +498,10 @@ func TestGameplayDrivesTheActiveCar(t *testing.T) {
 		key  ebiten.Key
 		held func(c carpen.Car) bool
 	}{
-		{name: "up", key: ebiten.KeyUp, held: func(c carpen.Car) bool { return c.Accelerate }},
-		{name: "down", key: ebiten.KeyDown, held: func(c carpen.Car) bool { return c.Decelerate }},
-		{name: "left", key: ebiten.KeyLeft, held: func(c carpen.Car) bool { return c.RotateLeft }},
-		{name: "right", key: ebiten.KeyRight, held: func(c carpen.Car) bool { return c.RotateRight }},
+		{name: "up", key: ebiten.KeyUp, held: func(c carpen.Car) bool { return c.Throttle == 1 }},
+		{name: "down", key: ebiten.KeyDown, held: func(c carpen.Car) bool { return c.Brake == 1 }},
+		{name: "left", key: ebiten.KeyLeft, held: func(c carpen.Car) bool { return c.Steering == -1 }},
+		{name: "right", key: ebiten.KeyRight, held: func(c carpen.Car) bool { return c.Steering == 1 }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			in := newFakeInput()

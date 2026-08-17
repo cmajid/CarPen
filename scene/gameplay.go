@@ -92,12 +92,8 @@ func newGameplay(in Input, level carpen.Level) *Gameplay {
 
 func newCar(paint string, x float64, y float64, rotate float64, active bool) carpen.Car {
 	car := carpen.Car{
-		Color:       paint,
-		IsActive:    active,
-		RotateLeft:  false,
-		RotateRight: false,
-		Accelerate:  false,
-		Decelerate:  false,
+		Color:    paint,
+		IsActive: active,
 
 		MaxSpeed:          6,
 		WheelWidth:        12,
@@ -161,39 +157,30 @@ func (g *Gameplay) Update() (Scene, error) {
 		return newResults(g.in, g.level), nil
 	}
 
-	// The input handlers only record intent; every change to Speed is made by
-	// Car.Move(), which is the one place that honours MaxSpeed and the reverse
-	// limit.
-	if justPressed(g.in, actionThrottle) {
-		g.cars[g.activeCar].Accelerate = true
-	}
-	if justPressed(g.in, actionBrake) {
-		g.cars[g.activeCar].Decelerate = true
-	}
-	if justPressed(g.in, actionSteerLeft) {
-		g.cars[g.activeCar].RotateLeft = true
-	}
-	if justPressed(g.in, actionSteerRight) {
-		g.cars[g.activeCar].RotateRight = true
-	}
+	// The controls are read as they stand this tick rather than on their edges.
+	// A trigger's pull and a stick's lean are positions and have no press to
+	// catch, and a position read afresh every tick cannot be left behind by an
+	// edge that happened on another screen.
+	//
+	// This only records what is being asked for; every change to Speed is made
+	// by Car.Move(), which is the one place that honours MaxSpeed and the
+	// reverse limit.
+	active := &g.cars[g.activeCar]
+	active.Throttle = analog(g.in, actionThrottle)
+	active.Brake = analog(g.in, actionBrake)
+	active.Steering = analog(g.in, actionSteerRight) - analog(g.in, actionSteerLeft)
 
-	if justReleased(g.in, actionThrottle) {
-		g.cars[g.activeCar].Accelerate = false
-	}
-	if justReleased(g.in, actionBrake) {
-		g.cars[g.activeCar].Decelerate = false
-	}
-	if justReleased(g.in, actionSteerRight) {
-		g.cars[g.activeCar].RotateRight = false
-	}
-	if justReleased(g.in, actionSteerLeft) {
-		g.cars[g.activeCar].RotateLeft = false
-	}
 	// Swapping hands the keys to the next car in the level, which is how the
 	// prototype's two cars are still both drivable. It comes to nothing on a
 	// level with a single car, and goes for good once a parked car is something
 	// to be avoided rather than driven (#20).
+	//
+	// The car being handed over has to be let go of first. Only the active car
+	// is read, so whatever the one before was last told stands for good: a swap
+	// made with the accelerator down used to leave that car flat out with
+	// nothing left to lift.
 	if justReleased(g.in, actionSwapCar) {
+		g.releaseControls()
 		g.activeCar = (g.activeCar + 1) % len(g.cars)
 	}
 
@@ -365,15 +352,15 @@ func (g *Gameplay) drawHUD(screen *ebiten.Image) {
 	}
 }
 
-// releaseControls lets go of every key the player was holding. Driving is worked
-// out from key presses and releases rather than from what is held down, so a key
-// released while another scene is running is never seen going up; without this
-// the car would drive on by itself once the race came back.
+// releaseControls takes every car's foot off the pedals and its hands off the
+// wheel. Only the car being driven is read each tick, so any other car keeps
+// whatever it was last told for as long as it is left alone — which is a car
+// still accelerating, on a screen where nothing can lift it. Pausing and
+// swapping both hand the driving somewhere else, and both let go first.
 func (g *Gameplay) releaseControls() {
 	for i := range g.cars {
-		g.cars[i].Accelerate = false
-		g.cars[i].Decelerate = false
-		g.cars[i].RotateLeft = false
-		g.cars[i].RotateRight = false
+		g.cars[i].Throttle = 0
+		g.cars[i].Brake = 0
+		g.cars[i].Steering = 0
 	}
 }

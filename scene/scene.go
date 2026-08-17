@@ -31,11 +31,24 @@ type Input interface {
 	CursorPosition() (x, y int)
 	IsMouseButtonJustPressed(button ebiten.MouseButton) bool
 
+	// IsKeyPressed is the key as it stands rather than the moment it moved. A
+	// menu cares about the press; the accelerator cares about being held, and
+	// working that out from the two edges is how a key released on another
+	// screen used to leave the car driving itself.
+	IsKeyPressed(key ebiten.Key) bool
+
 	// The pad is read in Ebiten's standard layout, which is the one place the
 	// difference between an Xbox pad, a DualSense and a Switch Pro controller
 	// is dealt with: all three arrive here as the same buttons.
 	IsGamepadButtonJustPressed(button ebiten.StandardGamepadButton) bool
 	IsGamepadButtonJustReleased(button ebiten.StandardGamepadButton) bool
+
+	// GamepadButtonValue and GamepadAxisValue are the pad's analogue half: how
+	// far a trigger is pulled, in 0..1, and how far a stick is pushed, in
+	// −1..1. A button that is only ever down or up answers 0 or 1, so the same
+	// reading serves the d-pad.
+	GamepadButtonValue(button ebiten.StandardGamepadButton) float64
+	GamepadAxisValue(axis ebiten.StandardGamepadAxis) float64
 
 	// GamepadConnected reports whether there is a pad to read at all, which is
 	// what the screens write their prompts for.
@@ -59,6 +72,8 @@ func (*Devices) IsKeyJustPressed(key ebiten.Key) bool { return inpututil.IsKeyJu
 
 func (*Devices) IsKeyJustReleased(key ebiten.Key) bool { return inpututil.IsKeyJustReleased(key) }
 
+func (*Devices) IsKeyPressed(key ebiten.Key) bool { return ebiten.IsKeyPressed(key) }
+
 func (*Devices) CursorPosition() (int, int) { return ebiten.CursorPosition() }
 
 func (*Devices) IsMouseButtonJustPressed(button ebiten.MouseButton) bool {
@@ -71,6 +86,14 @@ func (d *Devices) IsGamepadButtonJustPressed(button ebiten.StandardGamepadButton
 
 func (d *Devices) IsGamepadButtonJustReleased(button ebiten.StandardGamepadButton) bool {
 	return d.pad.justReleased(button)
+}
+
+func (d *Devices) GamepadButtonValue(button ebiten.StandardGamepadButton) float64 {
+	return d.pad.buttonValue(button)
+}
+
+func (d *Devices) GamepadAxisValue(axis ebiten.StandardGamepadAxis) float64 {
+	return d.pad.axisValue(axis)
 }
 
 func (d *Devices) GamepadConnected() bool { return d.pad.connected() }

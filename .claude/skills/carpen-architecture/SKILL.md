@@ -12,13 +12,15 @@ Module `github.com/cmajid/carpen`, three packages: `main` (window wiring only), 
 | File | Owns |
 |---|---|
 | `main.go` | Nothing but window setup: builds a `scene.Manager` on `scene.NewMenu` and hands it to `ebiten.RunGame`. Game logic does not belong here. |
-| `scene/scene.go` | `Scene` interface (`Update() (next Scene, err error)`) and the `Input` seam (keyboard **and** mouse, so menus are testable without a window). |
+| `scene/scene.go` | `Scene` interface (`Update() (next Scene, err error)`) and the `Input` seam — keyboard, mouse and pad, as edges (`…JustPressed`) **and** as levels (`IsKeyPressed`, `GamepadButtonValue`, `GamepadAxisValue`), so every screen is testable without a window. |
 | `scene/manager.go` | `Manager`: the `ebiten.Game` impl, fixed 640×480 `Layout`, and the scene switch. |
 | `scene/ui.go` | The design system every screen draws from: palette, type scale (Go fonts via `text/v2`), panels, the bottom prompt bar, scene fade. Change a colour or size **here**, not in a screen. |
 | `scene/menulist.go` | `menuList`, the one focusable list all menus are built from: wraps at both ends, keyboard + mouse, focus shown by shape and weight as well as colour. |
-| `scene/gameplay.go` | The race. Builds the world from a `carpen.Level`, maps keys to intent flags on the active car (Tab switches `activeCar`), builds the lot's four wall OBBs (`lotWalls`), checks the active car for collisions each tick and raises `CollisionEvent`s through `OnCollision` (rising-edge, seeded with the spawn state), and draws the F3 OBB overlay. |
+| `scene/controls.go` | The binding table: `action` (what the player *means*) mapped to keys, pad buttons and — for steering — a stick axis. `justPressed`/`justReleased` read edges; `analog` reads how far a control is being asked for, in 0..1, past `analogDeadzone`. Rebind **here**, never at a use site. |
+| `scene/gamepad.go` | Finding a pad in Ebiten's standard layout and reading it: `buttonValue`/`axisValue` for analogue travel, plus the left stick standing in for the d-pad's four buttons so menus get stick presses for free. |
+| `scene/gameplay.go` | The race. Builds the world from a `carpen.Level`, reads the controls onto the active car every tick (Tab switches `activeCar`; `releaseControls` first, or the car handed over drives on forever), builds the lot's four wall OBBs (`lotWalls`), checks the active car for collisions each tick and raises `CollisionEvent`s through `OnCollision` (rising-edge, seeded with the spawn state), and draws the F3 OBB overlay. |
 | `scene/menu.go`, `scene/pause.go`, `scene/results.go` | The three menu screens. Each is a heading, a `menuList`, and a row of prompts; pause holds the live `*Gameplay` so resuming keeps its state. |
-| `scene/scene_test.go`, `scene/menulist_test.go`, `scene/gameplay_test.go` | Scene switching, pause behaviour, input mapping, list navigation, and collision-event tests. |
+| `scene/scene_test.go`, `scene/menulist_test.go`, `scene/gameplay_test.go`, `scene/controls_test.go` | Scene switching, pause and swap behaviour, input mapping (keys, pad buttons, trigger and stick travel), list navigation, and collision-event tests. `fakeInput` in `scene_test.go` is the device stub every screen test drives. |
 | `carpen/car.go` | `Car` struct, physics, and drawing. The only file with nontrivial logic. |
 | `carpen/vector.go` | `Vector` with `Length`/`Normalize`. `Normalize` returns zero for a zero vector — a deliberate NaN guard; a NaN here would spread to position and never leave. |
 | `carpen/pivot.go`, `carpen/wheel.go` | Plain `{X, Y}` position structs (`Pivot`, `FrontPivot`, `RearPivot`, `RearPivotAbs`, `DirectionPivot`, `Direction`, `Wheel`). |
@@ -32,8 +34,9 @@ Module `github.com/cmajid/carpen`, three packages: `main` (window wiring only), 
 
 Kinematic front-wheel steering, all angles in **degrees** (converted with `math.Pi/180` at use sites):
 
-- Key handlers only record intent (`Accelerate`, `RotateLeft`, …). **`Move()` is the one place `Speed` changes**, honouring `MaxSpeed` (6) and the reverse limit (−3); no input forces speed toward 0.
-- `Steer()` steps `WheelAngle` by 2.4°/tick, clamped ±45°, and recomputes `DirectionPivot` → `Direction` (unit heading scaled by `Speed` in `UpdateDirection`).
+- The controls are **analogue**: `Throttle` and `Brake` in 0..1, `Steering` in −1..1 (negative is left). A key is only ever 0 or 1; a trigger and a stick fill in between. They record intent only — **`Move()` is the one place `Speed` changes**, honouring `MaxSpeed` (6) and the reverse limit (−3); no input forces speed toward 0.
+- `Move()` scales acceleration by the pedal (`Acceleration * Throttle`). Coasting and the crawl back to a stop are **unscaled** — the car slowing itself is not the player asking for anything.
+- `Steer()` treats `Steering` as a **position**: it picks a target of `Steering × WheelMaxAngle` and walks `WheelAngle` to it at 2.4°/tick, clamped ±45°. `Steering == 0` means *nothing asked*, not *straight ahead* — the wheels stay where they were left, so there is **no self-centring**. Then it recomputes `DirectionPivot` → `Direction` (unit heading scaled by `Speed` in `UpdateDirection`).
 - `Move()` advances `Pivot` along `Direction`, then derives body `Rotation` from the Pivot→RearPivotAbs vector (the "drift" block) and recomputes `RearPivotAbs`.
 - `Update()` = `Move()` + `Steer()`, called from the game's `Update()` at Ebiten's fixed 60 ticks/s. **Never step physics from the draw path** — that ties speed to the display refresh rate.
 
