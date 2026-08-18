@@ -17,3 +17,7 @@
 
 # Release build output (see .claude/skills/release-builds)
 dist/
+
+# Xcode per-user state, which is not the project
+ios/**/xcuserdata/
+ios/**/*.xcuserdatad

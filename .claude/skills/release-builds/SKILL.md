@@ -39,15 +39,26 @@ Serve over HTTP (e.g. `python3 -m http.server -d dist/web`) — `file://` will n
 
 ## Mobile (Android / iOS)
 
-Uses `ebitenmobile bind`, which wraps a library package, not `package main`:
+`ebitenmobile bind` wraps a library package, not `package main` — that package is `./mobile`, which does in `init()` what `main.go` does in `main`.
 
 ```sh
 go install github.com/hajimehoshi/ebiten/v2/cmd/ebitenmobile@latest
+ebitenmobile bind -target ios -o dist/Mobile.xcframework ./mobile      # or ios/build.sh
 ebitenmobile bind -target android -o dist/carpen.aar ./mobile
-ebitenmobile bind -target ios -o dist/Carpen.xcframework ./mobile
 ```
 
-The `./mobile` package (exposing the game via `github.com/hajimehoshi/ebiten/v2/mobile.SetGame`) does not exist yet — it is Phase 3 of epic #17. Android needs the SDK/NDK; iOS needs Xcode.
+The iOS framework **must** be named `Mobile`: gomobile names the Swift module after the Go package it bound, and Xcode only finds a module inside a framework of the same name. Android needs the SDK/NDK; iOS needs Xcode.
+
+### The iOS app
+
+`ios/CarPen.xcodeproj` is the app shell around that framework — an `AppDelegate` and a `GameViewController` subclassing the generated `MobileEbitenViewController`, in landscape, with the status bar and home indicator hidden. Xcode cannot compile Go, so after changing anything under `carpen/` or `scene/`, run `ios/build.sh` and then build as usual.
+
+Two settings are load-bearing and easy to lose:
+
+- `OTHER_LDFLAGS = -framework GameController`. gomobile frameworks do not declare their system dependencies, and without this the link fails on `GCController` — the pad support has no other way in on iOS.
+- The `Embed Frameworks` phase must carry `Mobile.xcframework` with `CodeSignOnCopy`, or the app builds and then dies at launch on a missing dylib.
+
+Simulator builds need no signing. A device build needs a development team set on the target (`DEVELOPMENT_TEAM`), which needs an Apple ID — that is the only thing standing between the project and a device.
 
 ## Xbox
 
