@@ -25,14 +25,24 @@ type Results struct {
 	// level is the one just played, kept so that Race Again deals the same
 	// puzzle out afresh rather than dropping the player somewhere else.
 	level carpen.Level
+
+	// width is the screen the manager last reported; the card is centred on it.
+	width int
 }
 
 func newResults(in Input, level carpen.Level) *Results {
-	return &Results{
+	r := &Results{
 		in:    in,
-		list:  newMenuList(206, 254, 228, "Race Again", "Main Menu"),
+		list:  newMenuList(0, 254, 228, "Race Again", "Main Menu"),
 		level: level,
 	}
+	r.resize(640, 480)
+	return r
+}
+
+func (r *Results) resize(width, _ int) {
+	r.width = width
+	r.list.centreOn(float64(width))
 }
 
 func (r *Results) Update() (Scene, error) {
@@ -55,16 +65,15 @@ func (r *Results) Update() (Scene, error) {
 func (r *Results) Draw(screen *ebiten.Image) {
 	screen.Fill(colourInk)
 
-	drawPanel(screen, 150, 130, 340, 230)
-	drawText(screen, "Results", fontHeading, 320, 178, colourText, text.AlignCenter, text.AlignCenter)
-	drawText(screen, "Nothing to score yet.", fontBody, 320, 212, colourTextMuted, text.AlignCenter, text.AlignCenter)
+	const panelWidth = 340
+	centre := float64(r.width) / 2
+
+	drawPanel(screen, centre-panelWidth/2, 130, panelWidth, 230)
+	drawText(screen, "Results", fontHeading, centre, 178, colourText, text.AlignCenter, text.AlignCenter)
+	drawText(screen, "Nothing to score yet.", fontBody, centre, 212, colourTextMuted, text.AlignCenter, text.AlignCenter)
 
 	r.list.draw(screen)
 
-	drawPrompts(screen,
-		promptFor(r.in, "Up / Down", "Stick", "Move"),
-		promptFor(r.in, "Enter", "A", "Select"),
-		promptFor(r.in, "Esc", "B", "Menu"),
-	)
+	drawMenuPrompts(screen, r.in, "Menu")
 	r.fade.draw(screen)
 }

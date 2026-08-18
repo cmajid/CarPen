@@ -2,6 +2,7 @@ package scene
 
 import (
 	"errors"
+	"image"
 	"testing"
 
 	"github.com/cmajid/carpen/carpen"
@@ -29,6 +30,21 @@ type fakeInput struct {
 	// meant by pressing it.
 	padValue map[ebiten.StandardGamepadButton]float64
 	axes     map[ebiten.StandardGamepadAxis]float64
+
+	// touches are the fingers on the screen this tick, in the order a real
+	// screen would report them. A finger outlives a tick the way a held key
+	// does, so a test that wants one held says so for each tick it is down.
+	touches []fakeTouch
+
+	// touchOn is the screen having been touched at all, which latches on the
+	// real device and latches here.
+	touchOn bool
+}
+
+// fakeTouch is one finger: which one it is, and where it is resting.
+type fakeTouch struct {
+	id   ebiten.TouchID
+	x, y int
 }
 
 func newFakeInput() *fakeInput {
@@ -75,6 +91,24 @@ func (f *fakeInput) GamepadButtonValue(b ebiten.StandardGamepadButton) float64 {
 func (f *fakeInput) GamepadAxisValue(a ebiten.StandardGamepadAxis) float64 { return f.axes[a] }
 
 func (f *fakeInput) GamepadConnected() bool { return f.padOn }
+
+func (f *fakeInput) AppendTouchIDs(ids []ebiten.TouchID) []ebiten.TouchID {
+	for _, t := range f.touches {
+		ids = append(ids, t.id)
+	}
+	return ids
+}
+
+func (f *fakeInput) TouchPosition(id ebiten.TouchID) (int, int) {
+	for _, t := range f.touches {
+		if t.id == id {
+			return t.x, t.y
+		}
+	}
+	return 0, 0
+}
+
+func (f *fakeInput) TouchActive() bool { return f.touchOn }
 
 // press makes keys the only ones going down on the next tick.
 func (f *fakeInput) press(keys ...ebiten.Key) {
@@ -141,6 +175,26 @@ func (f *fakeInput) click() {
 	f.clicked = true
 }
 
+// touchAt puts fingers on the screen at each of the given points, and they are
+// the only ones down for the tick that follows. Touching the screen is part of
+// touching it: nothing draws the on-screen controls for a player who has never
+// reached for them, so the first finger latches that on here as it does on a
+// real screen.
+func (f *fakeInput) touchAt(points ...image.Point) {
+	f.clear()
+	f.touches = f.touches[:0]
+	for i, p := range points {
+		f.touches = append(f.touches, fakeTouch{id: ebiten.TouchID(i + 1), x: p.X, y: p.Y})
+	}
+	if len(points) > 0 {
+		f.touchOn = true
+	}
+}
+
+// lift takes every finger off the screen, without unlatching the fact that the
+// player is playing by touch.
+func (f *fakeInput) lift() { f.touchAt() }
+
 func (f *fakeInput) clear() {
 	clear(f.pressed)
 	clear(f.released)
@@ -181,6 +235,15 @@ func (s *stubScene) Update() (Scene, error) {
 func (s *stubScene) Draw(*ebiten.Image) {
 	s.draws++
 }
+
+// stubResizer is a stubScene that also listens for the screen's size, so that
+// what the manager tells a scene can be tested without a real one.
+type stubResizer struct {
+	stubScene
+	width, height int
+}
+
+func (s *stubResizer) resize(width, height int) { s.width, s.height = width, height }
 
 // tick runs one update of the manager with keys held down for that tick.
 func tick(t *testing.T, m *Manager, in *fakeInput, keys ...ebiten.Key) {
@@ -273,13 +336,62 @@ func TestManagerDrawsTheRunningScene(t *testing.T) {
 	}
 }
 
-func TestManagerLayoutIsFixed(t *testing.T) {
+// The layout holds the height and follows the device's width. The height is
+// what everything in the game is sized against, so it is the half that must not
+// move; the width is what a phone has more of than the game was written for,
+// and following it is what keeps the cars from being stretched.
+func TestManagerLayoutHoldsHeightAndFollowsWidth(t *testing.T) {
+	for _, tc := range []struct {
+		name                        string
+		outsideWidth, outsideHeight int
+		wantWidth                   int
+	}{
+		{"the window the game opens in", 640, 480, 640},
+		{"a desktop monitor", 1920, 1080, 853},
+		{"a phone in landscape", 852, 393, 1041},
+		{"a phone in portrait, which is never narrower than the lot", 393, 852, 640},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := NewManager(640, 480, &stubScene{})
+
+			width, height := m.Layout(tc.outsideWidth, tc.outsideHeight)
+
+			if width != tc.wantWidth || height != 480 {
+				t.Errorf("Layout(%d, %d) = %dx%d, want %dx480",
+					tc.outsideWidth, tc.outsideHeight, width, height, tc.wantWidth)
+			}
+		})
+	}
+}
+
+// A window reporting nothing is a window the game cannot lay itself out in, so
+// the last size it did have stands rather than a screen no pixels wide.
+func TestManagerLayoutKeepsLastSizeWhenTheWindowIsEmpty(t *testing.T) {
 	m := NewManager(640, 480, &stubScene{})
+	m.Layout(852, 393)
 
-	width, height := m.Layout(1920, 1080)
+	width, height := m.Layout(0, 0)
 
-	if width != 640 || height != 480 {
-		t.Errorf("Layout = %dx%d, want 640x480 whatever the window size", width, height)
+	if width != 1041 || height != 480 {
+		t.Errorf("Layout(0, 0) = %dx%d, want the 1041x480 it last settled on", width, height)
+	}
+}
+
+// Scenes are told the size before they are updated, and again the moment they
+// take over — a scene is drawn on the frame it takes over on, and hit-testing a
+// tap against a layout from another screen size is how a button ends up
+// somewhere other than where it was drawn.
+func TestManagerTellsScenesTheScreenSize(t *testing.T) {
+	taking := &stubResizer{}
+	m := NewManager(640, 480, &stubScene{next: taking})
+	m.Layout(852, 393)
+
+	if err := m.Update(); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	if taking.width != 1041 || taking.height != 480 {
+		t.Errorf("the scene taking over was told %dx%d, want 1041x480", taking.width, taking.height)
 	}
 }
 

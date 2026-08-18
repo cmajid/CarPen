@@ -21,16 +21,32 @@ type Pause struct {
 	in     Input
 	list   *menuList
 	resume *Gameplay
+
+	// width is the screen the manager last reported. The overlay is a card in
+	// the middle of the screen, so all of it is placed against this.
+	width int
 }
 
 func newPause(g *Gameplay) *Pause {
-	g.releaseControls()
-
-	return &Pause{
+	p := &Pause{
 		in:     g.in,
-		list:   newMenuList(206, 216, 228, "Resume", "Restart", "Quit to Menu"),
+		list:   newMenuList(0, 216, 228, "Resume", "Restart", "Quit to Menu"),
 		resume: g,
 	}
+	p.resize(g.width, g.height)
+
+	g.releaseControls()
+
+	return p
+}
+
+// resize centres the overlay, and passes the size on to the race underneath —
+// which is still being drawn behind it, and would otherwise sit off to one side
+// of its own pause menu if the screen changed while the game was paused.
+func (p *Pause) resize(width, height int) {
+	p.width = width
+	p.list.centreOn(float64(width))
+	p.resume.resize(width, height)
 }
 
 func (p *Pause) Update() (Scene, error) {
@@ -58,14 +74,13 @@ func (p *Pause) Draw(screen *ebiten.Image) {
 	bounds := screen.Bounds()
 	fillRect(screen, 0, 0, float64(bounds.Dx()), float64(bounds.Dy()), colourDim)
 
-	drawPanel(screen, 170, 130, 300, 232)
-	drawText(screen, "Paused", fontHeading, 320, 176, colourText, text.AlignCenter, text.AlignCenter)
+	const panelWidth = 300
+	centre := float64(p.width) / 2
+
+	drawPanel(screen, centre-panelWidth/2, 130, panelWidth, 232)
+	drawText(screen, "Paused", fontHeading, centre, 176, colourText, text.AlignCenter, text.AlignCenter)
 
 	p.list.draw(screen)
 
-	drawPrompts(screen,
-		promptFor(p.in, "Up / Down", "Stick", "Move"),
-		promptFor(p.in, "Enter", "A", "Select"),
-		promptFor(p.in, "Esc", "B", "Resume"),
-	)
+	drawMenuPrompts(screen, p.in, "Resume")
 }

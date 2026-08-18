@@ -29,6 +29,11 @@ type Menu struct {
 	// car is the game's own art, parked on the menu. It is the quickest way to
 	// say what this game is, and it costs one sprite that is already embedded.
 	car *ebiten.Image
+
+	// width is the screen the manager last reported. The title and the list are
+	// set against the left edge and stay where they are put; the parked car is
+	// hung off the right edge, so it needs the number.
+	width int
 }
 
 func NewMenu(in Input, level carpen.Level) *Menu {
@@ -37,8 +42,11 @@ func NewMenu(in Input, level carpen.Level) *Menu {
 		list:  newMenuList(56, 286, 224, "Start Race", "Quit"),
 		level: level,
 		car:   carpen.CarImage("yellow"),
+		width: 640,
 	}
 }
+
+func (m *Menu) resize(width, _ int) { m.width = width }
 
 func (m *Menu) Update() (Scene, error) {
 	m.fade.update()
@@ -69,23 +77,24 @@ func (m *Menu) Draw(screen *ebiten.Image) {
 
 	m.list.draw(screen)
 
-	drawPrompts(screen,
-		promptFor(m.in, "Up / Down", "Stick", "Move"),
-		promptFor(m.in, "Enter", "A", "Select"),
-		promptFor(m.in, "Esc", "B", "Quit"),
-	)
+	drawMenuPrompts(screen, m.in, "Quit")
 	m.fade.draw(screen)
 }
 
 // drawParkingBay parks the car in a marked-out bay on the right of the screen,
-// which is the whole game in one picture.
+// which is the whole game in one picture. It is measured in from the right edge
+// rather than written down, so that a wider screen puts the bay against the
+// same margin instead of stranding it in the middle with the title.
 func (m *Menu) drawParkingBay(screen *ebiten.Image) {
 	const (
-		left  = 366
-		right = 574
-		top   = 96
-		foot  = 384
+		fromEdge = 66  // from the right of the screen to the right of the bay
+		bayWidth = 208 // between the two painted lines
+		top      = 96
+		foot     = 384
 	)
+
+	right := float64(m.width) - fromEdge
+	left := right - bayWidth
 
 	fillRect(screen, left, top, 4, foot-top, colourLine)
 	fillRect(screen, right, top, 4, foot-top, colourLine)

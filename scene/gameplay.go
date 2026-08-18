@@ -3,6 +3,7 @@ package scene
 import (
 	"fmt"
 	"image/color"
+	"math"
 
 	"github.com/cmajid/carpen/carpen"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -18,6 +19,25 @@ type Gameplay struct {
 	walls     []*carpen.OBB
 	activeCar int
 	fade      fade
+
+	// touch is the controls drawn on the screen, for a player with no keyboard
+	// and no pad. Every read of the controls below goes through it rather than
+	// through the package's own analog and justPressed, which is what folds a
+	// finger in alongside the other two devices.
+	touch touchControls
+
+	// world is the lot drawn at its own size, blitted into the middle of
+	// whatever screen the device turns out to have. Drawing into it rather than
+	// straight onto the screen is what keeps every coordinate in the game — the
+	// level's, the cars', the colliders' — the lot's own, on a screen that is
+	// no longer the same shape as the lot.
+	//
+	// It is made once. Building it per frame is the image churn #14 took out.
+	world *ebiten.Image
+
+	// width and height are the screen the manager last reported, which the HUD
+	// and the on-screen controls are laid out against.
+	width, height int
 
 	// OnCollision is the rules layer's ear. Detection only raises the event;
 	// whatever is plugged in here decides what a crash means, so no game-over
@@ -87,7 +107,30 @@ func newGameplay(in Input, level carpen.Level) *Gameplay {
 	event, hit := g.findCollision()
 	g.colliding, g.touching = hit, event.Obstruction
 
+	g.world = ebiten.NewImage(int(level.Lot.Width), int(level.Lot.Height))
+
+	// The lot's own size stands in until the manager says how big the screen
+	// really is, so a race drawn before its first resize is drawn somewhere
+	// sensible rather than at nothing by nothing.
+	g.resize(int(level.Lot.Width), int(level.Lot.Height))
+
 	return g
+}
+
+// resize lays the screen furniture out around a screen of this size. The lot
+// itself is not laid out again: it is the size the level says it is, and it is
+// put in the middle of whatever room there is (see worldOffset).
+func (g *Gameplay) resize(width, height int) {
+	g.width, g.height = width, height
+	g.touch.resize(width, height)
+}
+
+// worldOffset is where the lot's top left corner goes: the middle of the
+// screen, so the extra width a phone brings is shared out evenly either side
+// rather than left in a strip down one edge.
+func (g *Gameplay) worldOffset() (x, y float64) {
+	bounds := g.world.Bounds()
+	return math.Round(float64(g.width-bounds.Dx()) / 2), math.Round(float64(g.height-bounds.Dy()) / 2)
 }
 
 func newCar(paint string, x float64, y float64, rotate float64, active bool) carpen.Car {
@@ -148,12 +191,16 @@ func lotWalls(lot carpen.Lot) []*carpen.OBB {
 func (g *Gameplay) Update() (Scene, error) {
 	g.fade.update()
 
-	if justPressed(g.in, actionCancel) {
+	// The screen is read first, because everything below asks what the player
+	// is doing and the answer for a finger is worked out here.
+	g.touch.update(g.in)
+
+	if g.touch.justPressed(g.in, actionCancel) {
 		return newPause(g), nil
 	}
 	// Standing in for the win condition, which cannot tell the race is over
 	// until the cars can hit something (#20): Enter ends the race by hand.
-	if justPressed(g.in, actionFinish) {
+	if g.touch.justPressed(g.in, actionFinish) {
 		return newResults(g.in, g.level), nil
 	}
 
@@ -166,9 +213,9 @@ func (g *Gameplay) Update() (Scene, error) {
 	// by Car.Move(), which is the one place that honours MaxSpeed and the
 	// reverse limit.
 	active := &g.cars[g.activeCar]
-	active.Throttle = analog(g.in, actionThrottle)
-	active.Brake = analog(g.in, actionBrake)
-	active.Steering = analog(g.in, actionSteerRight) - analog(g.in, actionSteerLeft)
+	active.Throttle = g.touch.analog(g.in, actionThrottle)
+	active.Brake = g.touch.analog(g.in, actionBrake)
+	active.Steering = g.touch.analog(g.in, actionSteerRight) - g.touch.analog(g.in, actionSteerLeft)
 
 	// Swapping hands the keys to the next car in the level, which is how the
 	// prototype's two cars are still both drivable. It comes to nothing on a
@@ -179,7 +226,7 @@ func (g *Gameplay) Update() (Scene, error) {
 	// is read, so whatever the one before was last told stands for good: a swap
 	// made with the accelerator down used to leave that car flat out with
 	// nothing left to lift.
-	if justReleased(g.in, actionSwapCar) {
+	if g.touch.justReleased(g.in, actionSwapCar) {
 		g.releaseControls()
 		g.activeCar = (g.activeCar + 1) % len(g.cars)
 	}
@@ -235,26 +282,42 @@ func (g *Gameplay) findCollision() (carpen.CollisionEvent, bool) {
 }
 
 func (g *Gameplay) Draw(screen *ebiten.Image) {
-	// The lot is the ground the level is played on. It is the whole screen on
-	// every level so far, and anything the screen has left over is drawn in the
-	// menus' dark ink rather than in more lot.
-	screen.Fill(colourInk)
-	fillRect(screen, 0, 0, g.level.Lot.Width, g.level.Lot.Height, color.White)
+	// The lot is the ground the level is played on, and it is drawn into an
+	// image its own size: everything below places itself in the level's
+	// coordinates, and those stay the level's however wide the device is.
+	g.world.Fill(color.White)
 
-	g.drawBay(screen)
+	g.drawBay(g.world)
 
 	for i := range g.cars {
-		g.cars[i].DrawCar(screen)
+		g.cars[i].DrawCar(g.world)
 	}
 	for i := range g.bushes {
-		g.bushes[i].Draw(screen)
+		g.bushes[i].Draw(g.world)
 	}
 
 	if g.debugOBB {
-		g.drawOBBs(screen)
+		g.drawOBBs(g.world)
 	}
 
+	// Whatever the screen has over and above the lot is drawn in the menus'
+	// dark ink rather than in more lot, and the lot goes in the middle of it.
+	screen.Fill(colourInk)
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(g.worldOffset())
+	screen.DrawImage(g.world, op)
+
+	// The HUD and the controls belong to the screen rather than to the lot, so
+	// they are drawn on it directly: the controls have to reach the very edges
+	// the thumbs are at, which is past where the lot ends.
 	g.drawHUD(screen)
+	if g.debugOBB {
+		g.drawDebugStatus(screen)
+	}
+	if g.in.TouchActive() {
+		g.touch.draw(screen)
+	}
+
 	g.fade.draw(screen)
 }
 
@@ -279,8 +342,6 @@ func (g *Gameplay) drawOBBs(screen *ebiten.Image) {
 	for _, wall := range g.walls {
 		strokeOBB(screen, wall, colourBay)
 	}
-
-	g.drawDebugStatus(screen)
 }
 
 // drawDebugStatus writes the active car's live numbers, and what its box is
@@ -329,17 +390,22 @@ const bayLineWidth = 4
 // played on a white ground, which pale text disappears into, so the strip is
 // what keeps them readable wherever the cars happen to be.
 func (g *Gameplay) drawHUD(screen *ebiten.Image) {
-	fillRect(screen, 0, 0, float64(screen.Bounds().Dx()), 26, colourHUD)
+	fillRect(screen, 0, 0, float64(screen.Bounds().Dx()), hudHeight, colourHUD)
 
-	// The triggers are the half of the pad worth naming: a player reaches for
-	// the stick to steer without being told, and reaches for it to accelerate
-	// too — this is the line that puts that hand right.
-	drawText(screen, hint(g.in, "Arrows  Drive", "RT / LT  Drive"), fontPrompt, 14, 13, colourText, text.AlignStart, text.AlignCenter)
-	drawText(screen, hint(g.in, "Tab  Swap car", "X  Swap car"), fontPrompt, 116, 13, colourTextMuted, text.AlignStart, text.AlignCenter)
-	drawText(screen, hint(g.in, "Enter  Finish", "Y  Finish"), fontPrompt, 218, 13, colourTextMuted, text.AlignStart, text.AlignCenter)
-	drawText(screen, hint(g.in, "Esc  Pause", "Start  Pause"), fontPrompt, 320, 13, colourAccent, text.AlignStart, text.AlignCenter)
-	// The box overlay is on no pad button, so its key is named either way.
-	drawText(screen, "F3  Boxes", fontPrompt, 414, 13, colourTextMuted, text.AlignStart, text.AlignCenter)
+	// A player who is driving with the screen has every control in front of
+	// them with its own name written on it, so naming keys as well would be
+	// listing hardware that is not in the room.
+	if !g.in.TouchActive() {
+		// The triggers are the half of the pad worth naming: a player reaches for
+		// the stick to steer without being told, and reaches for it to accelerate
+		// too — this is the line that puts that hand right.
+		drawText(screen, hint(g.in, "Arrows  Drive", "RT / LT  Drive"), fontPrompt, 14, 13, colourText, text.AlignStart, text.AlignCenter)
+		drawText(screen, hint(g.in, "Tab  Swap car", "X  Swap car"), fontPrompt, 116, 13, colourTextMuted, text.AlignStart, text.AlignCenter)
+		drawText(screen, hint(g.in, "Enter  Finish", "Y  Finish"), fontPrompt, 218, 13, colourTextMuted, text.AlignStart, text.AlignCenter)
+		drawText(screen, hint(g.in, "Esc  Pause", "Start  Pause"), fontPrompt, 320, 13, colourAccent, text.AlignStart, text.AlignCenter)
+		// The box overlay is on no pad button, so its key is named either way.
+		drawText(screen, "F3  Boxes", fontPrompt, 414, 13, colourTextMuted, text.AlignStart, text.AlignCenter)
+	}
 
 	drawText(screen, fmt.Sprintf("%0.0f TPS", ebiten.ActualTPS()), fontPrompt, float64(screen.Bounds().Dx())-14, 13, colourTextMuted, text.AlignEnd, text.AlignCenter)
 
@@ -347,10 +413,15 @@ func (g *Gameplay) drawHUD(screen *ebiten.Image) {
 	// event. Once a crash fails the attempt (#17), this strip goes and the
 	// results screen says it instead.
 	if g.crash != nil {
-		fillRect(screen, 0, 26, float64(screen.Bounds().Dx()), 22, colourHUD)
+		fillRect(screen, 0, hudHeight, float64(screen.Bounds().Dx()), 22, colourHUD)
 		drawText(screen, fmt.Sprintf("Crashed into a %s", g.crash.Obstruction), fontPrompt, 14, 37, colourAccent, text.AlignStart, text.AlignCenter)
 	}
 }
+
+// hudHeight is the strip along the top of the race. The on-screen controls are
+// placed under it (touch.go), so it is a number both of them read rather than
+// one each.
+const hudHeight = 26
 
 // releaseControls takes every car's foot off the pedals and its hands off the
 // wheel. Only the car being driven is read each tick, so any other car keeps

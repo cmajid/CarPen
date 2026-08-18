@@ -73,6 +73,14 @@ func (l *menuList) update(in Input) int {
 	return nothingChosen
 }
 
+// centreOn puts the list in the middle of a screen this many pixels wide. The
+// screens that present their choices on a card call it whenever the screen
+// changes size, so the card and the list stay together on a device wider than
+// the one the numbers were written for.
+func (l *menuList) centreOn(width float64) {
+	l.x = (width - l.width) / 2
+}
+
 // move walks the focus by delta, coming back round at either end.
 func (l *menuList) move(delta int) {
 	count := len(l.items)

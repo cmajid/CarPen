@@ -29,6 +29,10 @@ const (
 	actionSwapCar
 	actionFinish
 	actionDebugBoxes
+
+	// numActions closes the list, so that anything keeping a state per action
+	// can be an array rather than a map.
+	numActions
 )
 
 // binding is everything that means one action. The pad's buttons are given in
@@ -122,6 +126,55 @@ var bindings = [...]binding{
 	actionDebugBoxes: {
 		keys: []ebiten.Key{ebiten.KeyF3},
 	},
+}
+
+// touchSlot is where on the screen an on-screen control sits. The places are
+// named rather than measured, because what a thumb can reach depends on the
+// size of the screen the thumb is on and not on any number that could be
+// written down here; touch.go turns each of these into a circle once the screen
+// says how big it is.
+type touchSlot int
+
+const (
+	slotPedalNear touchSlot = iota // the corner the right thumb rests in
+	slotPedalFar                   // the reach up from it
+
+	// The row along the top, named right to left because that is the order it
+	// is laid out in and the order a right hand meets it.
+	slotBarRight
+	slotBarMiddle
+	slotBarLeft
+
+	numTouchSlots
+)
+
+// touchButton is one control drawn on the screen: the action it asks for, what
+// is written on it, and where it sits.
+type touchButton struct {
+	action action
+	label  string
+	slot   touchSlot
+}
+
+// touchButtons is the third column of the binding table, for the player holding
+// nothing at all. It is shorter than the other two on purpose: a screen with a
+// control on it has that much less race showing, so what is here is what the
+// game cannot be played without, and the rest stays on the keys.
+//
+// Steering is not here — it is the stick, which is an axis rather than a button
+// and is placed and read in touch.go. The box overlay is not here either, for
+// the reason it is on no pad button: it is a development tool, and a player who
+// finds it has found a bug.
+//
+// The labels say what the control does rather than what it is called elsewhere
+// in the game: a player who has never seen the keyboard prompts has no idea
+// what Tab was, and every one of these is somebody's first press.
+var touchButtons = [...]touchButton{
+	{action: actionThrottle, label: "GO", slot: slotPedalNear},
+	{action: actionBrake, label: "BACK", slot: slotPedalFar},
+	{action: actionCancel, label: "II", slot: slotBarRight},
+	{action: actionFinish, label: "PARK", slot: slotBarMiddle},
+	{action: actionSwapCar, label: "SWAP", slot: slotBarLeft},
 }
 
 // analogDeadzone is how far a trigger or a stick has to leave its rest before

@@ -31,10 +31,18 @@ var (
 	colourBay       = color.RGBA{R: 0x8a, G: 0x96, B: 0xa4, A: 0xff} // the bay painted on the lot, which is a pale ground
 	colourDanger    = color.RGBA{R: 0xe5, G: 0x4b, B: 0x4b, A: 0xff} // a box the moment it is overlapping, on the F3 overlay
 
-	// Both of these are drawn over something else, so they are written with
-	// their alpha already folded in: Go's RGBA is alpha-premultiplied.
+	// These are all drawn over something else, so they are written with their
+	// alpha already folded in: Go's RGBA is alpha-premultiplied.
 	colourDim = color.RGBA{R: 0x07, G: 0x0a, B: 0x0e, A: 0xcc} // the frozen race behind the pause overlay
 	colourHUD = color.RGBA{R: 0x00, G: 0x00, B: 0x00, A: 0xa8} // the strip the driving keys are written on
+
+	// The on-screen controls sit over the lot on a narrow screen, so they are
+	// deliberately faint: enough to find with a thumb, not enough to lose a car
+	// behind. What is being pressed is drawn in the accent instead, which is
+	// solid.
+	colourTouch     = color.RGBA{R: 0x0d, G: 0x12, B: 0x18, A: 0x8c} // the face of a control
+	colourTouchLine = color.RGBA{R: 0x58, G: 0x60, B: 0x6a, A: 0x99} // its edge
+	colourTouchKnob = color.RGBA{R: 0xa6, G: 0xa9, B: 0xac, A: 0xb3} // the stick's knob, resting
 )
 
 // The type scale. Three sizes and two weights are enough to tell a title from a
@@ -92,6 +100,12 @@ func strokeCircle(dst *ebiten.Image, centre carpen.Vector, radius, width float64
 	vector.StrokeCircle(dst, float32(centre.X), float32(centre.Y), float32(radius), float32(width), colour, true)
 }
 
+// fillCircle draws a solid disc, antialiased — the face of every on-screen
+// control, which is round because a thumb is.
+func fillCircle(dst *ebiten.Image, x, y, radius float64, colour color.Color) {
+	vector.DrawFilledCircle(dst, float32(x), float32(y), float32(radius), colour, true)
+}
+
 // drawPanel draws a card with a line of accent along its top edge, the shape the
 // pause overlay and the results screen both present their choices in.
 func drawPanel(dst *ebiten.Image, x, y, width, height float64) {
@@ -135,8 +149,10 @@ func drawPrompts(dst *ebiten.Image, prompts ...prompt) {
 	const (
 		gapAfterKey  = 7  // between a key and what it does
 		gapAfterPair = 26 // between one prompt and the next
-		baseline     = 458
+		fromFoot     = 22 // from the bottom of the screen to the middle of the row
 	)
+
+	baseline := float64(dst.Bounds().Dy()) - fromFoot
 
 	width := 0.0
 	for i, p := range prompts {
@@ -160,6 +176,27 @@ func drawPrompts(dst *ebiten.Image, prompts ...prompt) {
 		doesWidth, _ := text.Measure(p.does, fontPrompt, 0)
 		x += doesWidth + gapAfterPair
 	}
+}
+
+// drawMenuPrompts writes the prompt bar the three menu screens share. They ask
+// the same three things of the player and differ only in what backing out of
+// them does, so they say so in one place.
+//
+// A player who is tapping is told to tap and nothing else. The rows are already
+// the size of a finger and already say what they do, so naming the keys as well
+// would be listing hardware that is not in the room — the same reason a pad
+// hides the keyboard's labels.
+func drawMenuPrompts(dst *ebiten.Image, in Input, back string) {
+	if in.TouchActive() {
+		drawPrompts(dst, prompt{key: "Tap", does: "Choose"})
+		return
+	}
+
+	drawPrompts(dst,
+		promptFor(in, "Up / Down", "Stick", "Move"),
+		promptFor(in, "Enter", "A", "Select"),
+		promptFor(in, "Esc", "B", back),
+	)
 }
 
 // fade darkens the first few ticks of a scene, so screens change with a blink
