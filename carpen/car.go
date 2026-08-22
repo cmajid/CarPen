@@ -112,20 +112,28 @@ func (car *Car) Steer() {
 // DrawCar blits the wheels and the body straight onto screen. The sprites are
 // placed with a GeoM per draw, so a frame allocates no image and no off-screen
 // buffer however many cars there are.
-func (car *Car) DrawCar(screen *ebiten.Image) {
-	car.DrawWheels(screen)
+//
+// origin is where the level's own (0, 0) falls on the destination. A car knows
+// where it stands in the level and nothing about the screen showing it, so
+// everything about the shape of that screen — how much ground there is around
+// the level, and therefore how far in the level has been placed — arrives here
+// as this one offset.
+func (car *Car) DrawCar(screen *ebiten.Image, origin Vector) {
+	car.DrawWheels(screen, origin)
 
 	opt := &ebiten.DrawImageOptions{Filter: ebiten.FilterLinear}
 	opt.GeoM = car.bodyGeoM()
+	opt.GeoM.Translate(origin.X, origin.Y)
 	screen.DrawImage(car.Image, opt)
 }
 
 // DrawWheels renders the wheels at their current angle. It only reads car
 // state; the angle itself is stepped in Steer().
-func (car *Car) DrawWheels(screen *ebiten.Image) {
+func (car *Car) DrawWheels(screen *ebiten.Image, origin Vector) {
 	opt := &ebiten.DrawImageOptions{Filter: ebiten.FilterLinear}
 	for i := 0; i < len(car.Wheels); i++ {
 		opt.GeoM = car.wheelGeoM(i)
+		opt.GeoM.Translate(origin.X, origin.Y)
 		screen.DrawImage(car.wheelImage, opt)
 	}
 }

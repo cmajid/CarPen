@@ -56,11 +56,12 @@ func (bush *Bush) Collider() *Circle {
 	return bush.circle
 }
 
-// Draw blits the bush onto screen. Direction is the bush's position on screen
-// and is applied here, so this is the only place the bush is positioned.
-func (bush *Bush) Draw(screen *ebiten.Image) {
+// Draw blits the bush onto screen. Direction is the bush's position in the
+// level and is applied here, so this is the only place the bush is positioned;
+// origin is where the level's (0, 0) falls on the destination, as for a car.
+func (bush *Bush) Draw(screen *ebiten.Image, origin Vector) {
 	opt := &ebiten.DrawImageOptions{}
 	opt.GeoM.Rotate(bush.Rotation * math.Pi / 180)
-	opt.GeoM.Translate(bush.Direction.X, bush.Direction.Y)
+	opt.GeoM.Translate(bush.Direction.X+origin.X, bush.Direction.Y+origin.Y)
 	screen.DrawImage(bush.Image, opt)
 }

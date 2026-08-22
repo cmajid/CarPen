@@ -26,15 +26,6 @@ type Gameplay struct {
 	// finger in alongside the other two devices.
 	touch touchControls
 
-	// world is the lot drawn at its own size, blitted into the middle of
-	// whatever screen the device turns out to have. Drawing into it rather than
-	// straight onto the screen is what keeps every coordinate in the game — the
-	// level's, the cars', the colliders' — the lot's own, on a screen that is
-	// no longer the same shape as the lot.
-	//
-	// It is made once. Building it per frame is the image churn #14 took out.
-	world *ebiten.Image
-
 	// view is the screen the manager last reported, which the HUD and the
 	// on-screen controls are laid out against — its size, and how big one game
 	// pixel is on the device holding it.
@@ -91,7 +82,6 @@ func newGameplay(in Input, level carpen.Level) *Gameplay {
 		g.bushes[i].Init()
 	}
 
-	g.walls = lotWalls(level.Lot)
 	g.OnCollision = func(event carpen.CollisionEvent) { g.crash = &event }
 
 	for i := range g.cars {
@@ -105,33 +95,26 @@ func newGameplay(in Input, level carpen.Level) *Gameplay {
 		g.cars[i].Direction = v1.Normalize()
 	}
 
+	// The level's own size stands in until the manager says how big the screen
+	// really is, so a race drawn before its first resize is drawn somewhere
+	// sensible rather than at nothing by nothing. This also builds the walls,
+	// which is why it runs before the spawn state is read below.
+	g.resize(viewport{width: int(level.Lot.Width), height: int(level.Lot.Height)})
+
 	event, hit := g.findCollision()
 	g.colliding, g.touching = hit, event.Obstruction
-
-	g.world = ebiten.NewImage(int(level.Lot.Width), int(level.Lot.Height))
-
-	// The lot's own size stands in until the manager says how big the screen
-	// really is, so a race drawn before its first resize is drawn somewhere
-	// sensible rather than at nothing by nothing.
-	g.resize(viewport{width: int(level.Lot.Width), height: int(level.Lot.Height)})
 
 	return g
 }
 
-// resize lays the screen furniture out around a screen of this size. The lot
-// itself is not laid out again: it is the size the level says it is, and it is
-// put in the middle of whatever room there is (see worldOffset).
+// resize lays the race out on a screen of this size: the furniture around it,
+// and the tarmac itself, which reaches the screen's edges however far away they
+// are. The walls go with the tarmac, so they are rebuilt here rather than once
+// at the start — a screen that changes shape changes where the lot ends.
 func (g *Gameplay) resize(v viewport) {
 	g.view = v
+	g.walls = lotWalls(g.playArea())
 	g.touch.resize(v)
-}
-
-// worldOffset is where the lot's top left corner goes: the middle of the
-// screen, so the extra width a phone brings is shared out evenly either side
-// rather than left in a strip down one edge.
-func (g *Gameplay) worldOffset() (x, y float64) {
-	bounds := g.world.Bounds()
-	return math.Round(float64(g.view.width-bounds.Dx()) / 2), math.Round(float64(g.view.height-bounds.Dy()) / 2)
 }
 
 func newCar(paint string, x float64, y float64, rotate float64, active bool) carpen.Car {
@@ -177,15 +160,57 @@ func newBush(x, y float64) carpen.Bush {
 // edges, so driving off any side is a collision like any other. They are far
 // thicker than the longest step a car can take in a tick (MaxSpeed is 6), so
 // a car can never jump one between two checks.
-func lotWalls(lot carpen.Lot) []*carpen.OBB {
+//
+// The lot they close is the play area rather than the level's own rectangle —
+// on a screen wider than the level, the tarmac reaches the edges and so do
+// these. They are rebuilt whenever the screen changes size, which is the one
+// thing about this game that a device is allowed to decide.
+func lotWalls(area lot) []*carpen.OBB {
 	const thickness = 100.0
-	w, h := lot.Width, lot.Height
+	l, t, w, h := area.left, area.top, area.width, area.height
 
 	return []*carpen.OBB{
-		carpen.NewOBB(w/2, -thickness/2, w+2*thickness, thickness, 0),  // top
-		carpen.NewOBB(w/2, h+thickness/2, w+2*thickness, thickness, 0), // bottom
-		carpen.NewOBB(-thickness/2, h/2, thickness, h+2*thickness, 0),  // left
-		carpen.NewOBB(w+thickness/2, h/2, thickness, h+2*thickness, 0), // right
+		carpen.NewOBB(l+w/2, t-thickness/2, w+2*thickness, thickness, 0),   // top
+		carpen.NewOBB(l+w/2, t+h+thickness/2, w+2*thickness, thickness, 0), // bottom
+		carpen.NewOBB(l-thickness/2, t+h/2, thickness, h+2*thickness, 0),   // left
+		carpen.NewOBB(l+w+thickness/2, t+h/2, thickness, h+2*thickness, 0), // right
+	}
+}
+
+// lot is the ground the car may drive on, in the level's own coordinates. The
+// level says how big its own rectangle is; where the screen is bigger than
+// that, the tarmac is extended evenly on every side to meet the edges, so its
+// left and top are negative — the level's (0, 0) is no longer the corner of the
+// world, it is just the corner of the part of the world the level furnished.
+//
+// This is what keeps a wider phone from being a different puzzle: the bay, the
+// bushes and the parked cars are all placed by the level and none of them move.
+// What a bigger screen buys is empty tarmac out at the sides, which is also
+// where the player's thumbs are.
+type lot struct {
+	left, top, width, height float64
+}
+
+// playArea is that ground for the screen the game is currently on.
+func (g *Gameplay) playArea() lot {
+	origin := g.origin()
+
+	return lot{
+		left:   -origin.X,
+		top:    -origin.Y,
+		width:  math.Max(g.level.Lot.Width, float64(g.view.width)),
+		height: math.Max(g.level.Lot.Height, float64(g.view.height)),
+	}
+}
+
+// origin is where the level's own (0, 0) falls on the screen: half of whatever
+// the screen has over and above the level, so the level sits in the middle of
+// it. Everything drawn places itself against this, and it is rounded to a whole
+// pixel so that sprites do not land on half of one.
+func (g *Gameplay) origin() carpen.Vector {
+	return carpen.Vector{
+		X: math.Round(math.Max(0, float64(g.view.width)-g.level.Lot.Width) / 2),
+		Y: math.Round(math.Max(0, float64(g.view.height)-g.level.Lot.Height) / 2),
 	}
 }
 
@@ -283,36 +308,29 @@ func (g *Gameplay) findCollision() (carpen.CollisionEvent, bool) {
 }
 
 func (g *Gameplay) Draw(screen *ebiten.Image) {
-	// The lot is the ground the level is played on, and it is drawn into an
-	// image its own size: everything below places itself in the level's
-	// coordinates, and those stay the level's however wide the device is.
-	g.world.Fill(color.White)
+	// The lot is the ground the level is played on, and it is the whole screen:
+	// the level furnishes the middle of it and the rest is tarmac out to the
+	// edges (see playArea). Everything below places itself in the level's own
+	// coordinates and is put where the level was put by origin, so nothing in
+	// the game has to know what shape the device is.
+	screen.Fill(color.White)
 
-	g.drawBay(g.world)
+	origin := g.origin()
+	g.drawBay(screen, origin)
 
 	for i := range g.cars {
-		g.cars[i].DrawCar(g.world)
+		g.cars[i].DrawCar(screen, origin)
 	}
 	for i := range g.bushes {
-		g.bushes[i].Draw(g.world)
+		g.bushes[i].Draw(screen, origin)
 	}
 
 	if g.debugOBB {
-		g.drawOBBs(g.world)
+		g.drawOBBs(screen, origin)
 	}
 
-	// Whatever the screen has over and above the lot is ground the level does
-	// not reach, and the lot goes in the middle of it.
-	left, top := g.worldOffset()
-	g.drawSurround(screen, left, top)
-
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(left, top)
-	screen.DrawImage(g.world, op)
-
 	// The HUD and the controls belong to the screen rather than to the lot, so
-	// they are drawn on it directly: the controls have to reach the very edges
-	// the thumbs are at, which is past where the lot ends.
+	// they are drawn after it and in its own coordinates.
 	g.drawHUD(screen)
 	if g.debugOBB {
 		g.drawDebugStatus(screen)
@@ -324,57 +342,32 @@ func (g *Gameplay) Draw(screen *ebiten.Image) {
 	g.fade.draw(screen)
 }
 
-// drawSurround paints what is on the screen but not in the level: the ground
-// beyond the lot, and the kerb the lot ends at.
-//
-// The lot is 4:3 because the level is, and a handset is nothing like 4:3, so on
-// a phone there are a couple of hundred pixels down each side that no level can
-// ever reach. Filling them with the menus' ink made a race look like it had
-// failed to draw — a black band beside a white lot reads as a hole rather than
-// as somewhere. They are drawn as ground instead, which is what they are.
-//
-// The kerb is not decoration. The walls that stop the car stand exactly on the
-// lot's edge (see lotWalls), and until now the player was asked to feel for
-// them: an edge that can be seen is an edge that can be parked against.
-func (g *Gameplay) drawSurround(screen *ebiten.Image, left, top float64) {
-	screen.Fill(colourOutside)
-
-	const kerb = 5
-
-	bounds := g.world.Bounds()
-	width, height := float64(bounds.Dx()), float64(bounds.Dy())
-
-	// Drawn just outside the lot on all four sides, so the blit that follows
-	// lands inside it rather than over it. Where the lot already reaches the
-	// screen's edge — the top and bottom of a phone, every side of a 4:3
-	// window — the strip falls off the screen and costs nothing.
-	fillRect(screen, left-kerb, top-kerb, width+2*kerb, kerb, colourKerb)
-	fillRect(screen, left-kerb, top+height, width+2*kerb, kerb, colourKerb)
-	fillRect(screen, left-kerb, top, kerb, height, colourKerb)
-	fillRect(screen, left+width, top, kerb, height, colourKerb)
-}
-
 // drawOBBs outlines every box collision sees — the development overlay behind
 // F3. The active car's box turns red for exactly the ticks it overlaps
 // something, so a clipped corner is seen the moment it happens rather than
 // found later in the crash notice. Reading an entity's OBB() re-places its box
 // but steps no physics, so drawing it here breaks nothing about the fixed
 // tick rate.
-func (g *Gameplay) drawOBBs(screen *ebiten.Image) {
+func (g *Gameplay) drawOBBs(screen *ebiten.Image, origin carpen.Vector) {
 	for i := range g.cars {
 		colour := colourAccent
 		if i == g.activeCar && g.touching != "" {
 			colour = colourDanger
 		}
-		strokeOBB(screen, g.cars[i].OBB(), colour)
+		strokeOBB(screen, g.cars[i].OBB(), origin, colour)
 	}
 	for i := range g.bushes {
 		circle := g.bushes[i].Collider()
-		strokeCircle(screen, circle.Center(), circle.Radius(), 2, colourAccent)
+		strokeCircle(screen, shift(circle.Center(), origin), circle.Radius(), 2, colourAccent)
 	}
 	for _, wall := range g.walls {
-		strokeOBB(screen, wall, colourBay)
+		strokeOBB(screen, wall, origin, colourBay)
 	}
+}
+
+// shift moves a point from the level's coordinates onto the screen.
+func shift(point, origin carpen.Vector) carpen.Vector {
+	return carpen.Vector{X: point.X + origin.X, Y: point.Y + origin.Y}
 }
 
 // drawDebugStatus writes the active car's live numbers, and what its box is
@@ -398,10 +391,10 @@ func (g *Gameplay) drawDebugStatus(screen *ebiten.Image) {
 		fontPrompt, 14, bottom-11, colour, text.AlignStart, text.AlignCenter)
 }
 
-func strokeOBB(dst *ebiten.Image, obb *carpen.OBB, colour color.Color) {
+func strokeOBB(dst *ebiten.Image, obb *carpen.OBB, origin carpen.Vector, colour color.Color) {
 	outline := obb.Outline()
 	for i := range outline {
-		strokeLine(dst, outline[i], outline[(i+1)%len(outline)], 2, colour)
+		strokeLine(dst, shift(outline[i], origin), shift(outline[(i+1)%len(outline)], origin), 2, colour)
 	}
 }
 
@@ -409,12 +402,12 @@ func strokeOBB(dst *ebiten.Image, obb *carpen.OBB, colour color.Color) {
 // sides and the back of the bay, painted on the ground and left open on the
 // edge the car drives in over. It is drawn before the cars, so a car parked in
 // the bay stands on the lines rather than under them.
-func (g *Gameplay) drawBay(screen *ebiten.Image) {
+func (g *Gameplay) drawBay(screen *ebiten.Image, origin carpen.Vector) {
 	nearLeft, nearRight, farLeft, farRight := g.level.Bay.Corners()
 
-	strokeLine(screen, nearLeft, farLeft, bayLineWidth, colourBay)
-	strokeLine(screen, nearRight, farRight, bayLineWidth, colourBay)
-	strokeLine(screen, farLeft, farRight, bayLineWidth, colourBay)
+	strokeLine(screen, shift(nearLeft, origin), shift(farLeft, origin), bayLineWidth, colourBay)
+	strokeLine(screen, shift(nearRight, origin), shift(farRight, origin), bayLineWidth, colourBay)
+	strokeLine(screen, shift(farLeft, origin), shift(farRight, origin), bayLineWidth, colourBay)
 }
 
 const bayLineWidth = 4

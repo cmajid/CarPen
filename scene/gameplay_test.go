@@ -168,3 +168,84 @@ func TestTheLevelSurvivesEveryWayBackToTheGame(t *testing.T) {
 		}
 	})
 }
+
+// hitsAWall reports whether a box is inside any of the boxes that close the lot
+// in — which is what a car driving off the edge finds out the hard way.
+func hitsAWall(walls []*carpen.OBB, box *carpen.OBB) bool {
+	for _, wall := range walls {
+		if carpen.Intersects(box, wall) {
+			return true
+		}
+	}
+	return false
+}
+
+// The tarmac reaches the screen's edges. A phone is far wider than the 4:3 the
+// level is drawn at, and the ground that fills the difference is ground the car
+// can actually use — otherwise it is a picture of a car park with a wall drawn
+// down the middle of it.
+func TestPlayAreaReachesTheScreenEdges(t *testing.T) {
+	g := newGameplay(newFakeInput(), aLevel())
+	g.resize(viewport{width: 1040, height: 480}) // a handset in landscape
+
+	area := g.playArea()
+
+	if area.width != 1040 || area.height != 480 {
+		t.Errorf("play area is %.0fx%.0f, want the screen's own 1040x480", area.width, area.height)
+	}
+	if area.left != -200 || area.top != 0 {
+		t.Errorf("play area starts at %.0f, %.0f, want -200, 0 — the level centred in it", area.left, area.top)
+	}
+}
+
+// The level is not moved by any of this; it is placed. Where the screen has more
+// room than the level asked for, the level goes in the middle of it and stays
+// exactly the puzzle it was — so what a wider phone gives is room at the edges
+// and never a different arrangement of the things being parked around.
+func TestABiggerScreenPlacesTheLevelWithoutMovingIt(t *testing.T) {
+	level := aLevel()
+	g := newGameplay(newFakeInput(), level)
+
+	before := g.cars[0].Pivot
+	g.resize(viewport{width: 1040, height: 480})
+
+	if g.cars[0].Pivot != before {
+		t.Errorf("the car moved to %+v on a wider screen, from %+v", g.cars[0].Pivot, before)
+	}
+	if origin := g.origin(); origin.X != 200 || origin.Y != 0 {
+		t.Errorf("the level is drawn from %+v, want 200, 0 — centred in the screen's spare room", origin)
+	}
+}
+
+// What the extra ground is for: it can be driven on. The wall is out at the
+// screen's edge, not at the level's, so the thumbs rest on tarmac the car is
+// allowed to reach rather than on a painted-on boundary.
+func TestTheCarMayDriveOnTheExtraGround(t *testing.T) {
+	g := newGameplay(newFakeInput(), aLevel())
+	g.resize(viewport{width: 1040, height: 480})
+
+	// Out past where the level's own rectangle ends, but on screen.
+	onTheMargin := carpen.NewOBB(-100, 240, 40, 40, 0)
+	if hitsAWall(g.walls, onTheMargin) {
+		t.Error("the ground beside the level is walled off, so the screen shows tarmac the car cannot use")
+	}
+
+	// Past the screen's edge, which is where the wall belongs.
+	offTheScreen := carpen.NewOBB(-260, 240, 40, 40, 0)
+	if !hitsAWall(g.walls, offTheScreen) {
+		t.Error("driving off the side of the screen is not a collision")
+	}
+}
+
+// On a screen the shape of the level there is nothing to extend, and the lot is
+// the level's own — the game a desktop window has been playing all along.
+func TestPlayAreaIsTheLevelWhenTheScreenFitsIt(t *testing.T) {
+	g := newGameplay(newFakeInput(), aLevel())
+	g.resize(viewport{width: 640, height: 480})
+
+	area := g.playArea()
+
+	if area != (lot{left: 0, top: 0, width: 640, height: 480}) {
+		t.Errorf("play area is %+v, want the level's own 640x480 at the origin", area)
+	}
+}
