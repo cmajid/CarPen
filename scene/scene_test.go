@@ -3,6 +3,7 @@ package scene
 import (
 	"errors"
 	"image"
+	"math"
 	"testing"
 
 	"github.com/cmajid/carpen/carpen"
@@ -240,10 +241,10 @@ func (s *stubScene) Draw(*ebiten.Image) {
 // what the manager tells a scene can be tested without a real one.
 type stubResizer struct {
 	stubScene
-	width, height int
+	view viewport
 }
 
-func (s *stubResizer) resize(width, height int) { s.width, s.height = width, height }
+func (s *stubResizer) resize(v viewport) { s.view = v }
 
 // tick runs one update of the manager with keys held down for that tick.
 func tick(t *testing.T, m *Manager, in *fakeInput, keys ...ebiten.Key) {
@@ -269,7 +270,7 @@ func choose(t *testing.T, m *Manager, in *fakeInput, index int) {
 
 func TestManagerStaysOnASceneThatReturnsNoNext(t *testing.T) {
 	first := &stubScene{}
-	m := NewManager(640, 480, first)
+	m := NewManager(first)
 
 	for i := 0; i < 3; i++ {
 		if err := m.Update(); err != nil {
@@ -290,7 +291,7 @@ func TestManagerStaysOnASceneThatReturnsNoNext(t *testing.T) {
 // would see the very key press that ended that scene and act on it too.
 func TestManagerUpdatesTheNewSceneOnTheNextTickOnly(t *testing.T) {
 	second := &stubScene{}
-	m := NewManager(640, 480, &stubScene{next: second})
+	m := NewManager(&stubScene{next: second})
 
 	if err := m.Update(); err != nil {
 		t.Fatalf("Update: %v", err)
@@ -313,7 +314,7 @@ func TestManagerUpdatesTheNewSceneOnTheNextTickOnly(t *testing.T) {
 func TestManagerReportsASceneError(t *testing.T) {
 	wantErr := errors.New("scene broke")
 	first := &stubScene{next: &stubScene{}, err: wantErr}
-	m := NewManager(640, 480, first)
+	m := NewManager(first)
 
 	err := m.Update()
 
@@ -327,7 +328,7 @@ func TestManagerReportsASceneError(t *testing.T) {
 
 func TestManagerDrawsTheRunningScene(t *testing.T) {
 	first := &stubScene{}
-	m := NewManager(640, 480, first)
+	m := NewManager(first)
 
 	m.Draw(nil)
 
@@ -350,9 +351,11 @@ func TestManagerLayoutHoldsHeightAndFollowsWidth(t *testing.T) {
 		{"a desktop monitor", 1920, 1080, 853},
 		{"a phone in landscape", 852, 393, 1041},
 		{"a phone in portrait, which is never narrower than the lot", 393, 852, 640},
+		{"a tablet in landscape, which is nearly the lot's own shape", 1180, 820, 691},
+		{"a big tablet, which is exactly it", 1376, 1032, 640},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			m := NewManager(640, 480, &stubScene{})
+			m := NewManager(&stubScene{})
 
 			width, height := m.Layout(tc.outsideWidth, tc.outsideHeight)
 
@@ -364,10 +367,37 @@ func TestManagerLayoutHoldsHeightAndFollowsWidth(t *testing.T) {
 	}
 }
 
+// Layout is the one place the device's own measure can be read: outsideHeight
+// arrives in points on a phone or a tablet, and against the height the game is
+// pinned to that is what one game pixel comes to in the player's hand. Anything
+// a thumb has to land on is sized through it, so a tablet's controls are not
+// twice the size of a phone's.
+func TestManagerLayoutRecordsWhatAGamePixelIsOnTheDevice(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		outsideHeight int
+		want          float64
+	}{
+		{"a phone in landscape", 393, 393.0 / 480},
+		{"a tablet in landscape", 820, 820.0 / 480},
+		{"the window the game opens in", 480, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := NewManager(&stubScene{})
+
+			m.Layout(tc.outsideHeight*2, tc.outsideHeight)
+
+			if math.Abs(m.pointsPerPixel-tc.want) > 0.0001 {
+				t.Errorf("one game pixel is %.4f points, want %.4f", m.pointsPerPixel, tc.want)
+			}
+		})
+	}
+}
+
 // A window reporting nothing is a window the game cannot lay itself out in, so
 // the last size it did have stands rather than a screen no pixels wide.
 func TestManagerLayoutKeepsLastSizeWhenTheWindowIsEmpty(t *testing.T) {
-	m := NewManager(640, 480, &stubScene{})
+	m := NewManager(&stubScene{})
 	m.Layout(852, 393)
 
 	width, height := m.Layout(0, 0)
@@ -383,15 +413,18 @@ func TestManagerLayoutKeepsLastSizeWhenTheWindowIsEmpty(t *testing.T) {
 // somewhere other than where it was drawn.
 func TestManagerTellsScenesTheScreenSize(t *testing.T) {
 	taking := &stubResizer{}
-	m := NewManager(640, 480, &stubScene{next: taking})
+	m := NewManager(&stubScene{next: taking})
 	m.Layout(852, 393)
 
 	if err := m.Update(); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
-	if taking.width != 1041 || taking.height != 480 {
-		t.Errorf("the scene taking over was told %dx%d, want 1041x480", taking.width, taking.height)
+	if taking.view.width != 1041 || taking.view.height != 480 {
+		t.Errorf("the scene taking over was told %dx%d, want 1041x480", taking.view.width, taking.view.height)
+	}
+	if want := 393.0 / 480; math.Abs(taking.view.pointsPerPixel-want) > 0.0001 {
+		t.Errorf("the scene taking over was told one game pixel is %.4f points, want %.4f", taking.view.pointsPerPixel, want)
 	}
 }
 
@@ -399,7 +432,7 @@ func TestManagerTellsScenesTheScreenSize(t *testing.T) {
 // shows its results, and the results lead back to the menu.
 func TestMenuGameplayResultsCycle(t *testing.T) {
 	in := newFakeInput()
-	m := NewManager(640, 480, NewMenu(in, testLevel(t)))
+	m := NewManager(NewMenu(in, testLevel(t)))
 
 	choose(t, m, in, menuStart)
 	if _, ok := m.current.(*Gameplay); !ok {
@@ -422,7 +455,7 @@ func TestMenuGameplayResultsCycle(t *testing.T) {
 func TestEscapeGoesBack(t *testing.T) {
 	t.Run("results back to the menu", func(t *testing.T) {
 		in := newFakeInput()
-		m := NewManager(640, 480, newResults(in, testLevel(t)))
+		m := NewManager(newResults(in, testLevel(t)))
 
 		tick(t, m, in, ebiten.KeyEscape)
 
@@ -434,7 +467,7 @@ func TestEscapeGoesBack(t *testing.T) {
 	t.Run("pause back to the race", func(t *testing.T) {
 		in := newFakeInput()
 		game := newGameplay(in, testLevel(t))
-		m := NewManager(640, 480, game)
+		m := NewManager(game)
 
 		tick(t, m, in, ebiten.KeyEscape)
 		tick(t, m, in, ebiten.KeyEscape)
@@ -446,7 +479,7 @@ func TestEscapeGoesBack(t *testing.T) {
 
 	t.Run("menu ends the game", func(t *testing.T) {
 		in := newFakeInput()
-		m := NewManager(640, 480, NewMenu(in, testLevel(t)))
+		m := NewManager(NewMenu(in, testLevel(t)))
 
 		in.press(ebiten.KeyEscape)
 
@@ -460,7 +493,7 @@ func TestEscapeGoesBack(t *testing.T) {
 // rather than as a failure.
 func TestMenuQuitEndsTheGame(t *testing.T) {
 	in := newFakeInput()
-	m := NewManager(640, 480, NewMenu(in, testLevel(t)))
+	m := NewManager(NewMenu(in, testLevel(t)))
 
 	in.press(ebiten.KeyDown)
 	if err := m.Update(); err != nil {
@@ -477,7 +510,7 @@ func TestMenuQuitEndsTheGame(t *testing.T) {
 func TestPauseResumesTheSameRace(t *testing.T) {
 	in := newFakeInput()
 	game := newGameplay(in, testLevel(t))
-	m := NewManager(640, 480, game)
+	m := NewManager(game)
 
 	tick(t, m, in, ebiten.KeyEscape)
 	paused, ok := m.current.(*Pause)
@@ -499,7 +532,7 @@ func TestPauseResumesTheSameRace(t *testing.T) {
 func TestPauseFreezesTheCars(t *testing.T) {
 	in := newFakeInput()
 	game := newGameplay(in, testLevel(t))
-	m := NewManager(640, 480, game)
+	m := NewManager(game)
 
 	tick(t, m, in, ebiten.KeyEscape)
 	before := game.cars[0].Pivot
@@ -519,7 +552,7 @@ func TestPauseFreezesTheCars(t *testing.T) {
 func TestPauseReleasesHeldControls(t *testing.T) {
 	in := newFakeInput()
 	game := newGameplay(in, testLevel(t))
-	m := NewManager(640, 480, game)
+	m := NewManager(game)
 
 	tick(t, m, in, ebiten.KeyUp, ebiten.KeyLeft)
 	if game.cars[0].Throttle == 0 || game.cars[0].Steering == 0 {
@@ -567,7 +600,7 @@ func TestSwappingCarsReleasesTheCarHandedOver(t *testing.T) {
 
 func TestPauseQuitReturnsToTheMenu(t *testing.T) {
 	in := newFakeInput()
-	m := NewManager(640, 480, newGameplay(in, testLevel(t)))
+	m := NewManager(newGameplay(in, testLevel(t)))
 
 	tick(t, m, in, ebiten.KeyEscape)
 	choose(t, m, in, pauseQuit)
@@ -582,7 +615,7 @@ func TestPauseQuitReturnsToTheMenu(t *testing.T) {
 func TestPauseRestartDealsAFreshRace(t *testing.T) {
 	in := newFakeInput()
 	first := newGameplay(in, testLevel(t))
-	m := NewManager(640, 480, first)
+	m := NewManager(first)
 
 	// Drive for a while, so a race that carried on would be somewhere else.
 	for i := 0; i < 20; i++ {

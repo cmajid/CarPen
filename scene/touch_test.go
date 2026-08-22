@@ -14,12 +14,23 @@ func at(c touchCircle) image.Point {
 	return image.Pt(int(c.x), int(c.y))
 }
 
+// The screens the controls are laid out on. window is a plain 640x480 with
+// nothing said about the device, which is a desktop window and is what the
+// tests that press a control rather than measure one want; phone and tablet are
+// what Manager.Layout makes of a real device held in landscape, and carry the
+// scale that anything sized for a thumb is worked out through.
+var (
+	window = viewport{width: 640, height: 480}
+	phone  = viewport{width: 1041, height: 480, pointsPerPixel: 393.0 / 480} // iPhone 15/16: 852x393pt
+	tablet = viewport{width: 691, height: 480, pointsPerPixel: 820.0 / 480}  // iPad Air 11": 1180x820pt
+)
+
 // newTouchControls is a set of controls laid out for a screen, which is the
 // state they are always in by the time anything reads them: the manager sizes a
 // scene before it updates it.
-func newTouchControls(width, height int) *touchControls {
+func newTouchControls(v viewport) *touchControls {
 	t := &touchControls{}
-	t.resize(width, height)
+	t.resize(v)
 	return t
 }
 
@@ -50,7 +61,7 @@ func TestTouchStickSteersByHowFarItIsPushed(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			in := newFakeInput()
-			touch := newTouchControls(640, 480)
+			touch := newTouchControls(window)
 			stick := touch.layout.stick
 
 			in.touchAt(image.Pt(int(stick.x+tc.across*stick.radius), int(stick.y)))
@@ -72,7 +83,7 @@ func TestTouchStickSteersByHowFarItIsPushed(t *testing.T) {
 // turn that needed the most lock.
 func TestTouchStickKeepsTheFingerThatTookIt(t *testing.T) {
 	in := newFakeInput()
-	touch := newTouchControls(640, 480)
+	touch := newTouchControls(window)
 	stick := touch.layout.stick
 
 	in.touchAt(at(stick))
@@ -100,7 +111,7 @@ func TestTouchStickKeepsTheFingerThatTookIt(t *testing.T) {
 // doing nothing at all.
 func TestTouchStickIsCaughtFromBesideIt(t *testing.T) {
 	in := newFakeInput()
-	touch := newTouchControls(640, 480)
+	touch := newTouchControls(window)
 	stick := touch.layout.stick
 
 	// Outside the ring, inside the catchment.
@@ -118,7 +129,7 @@ func TestTouchStickIsCaughtFromBesideIt(t *testing.T) {
 // stick off the accelerator.
 func TestTouchStickIgnoresHowFarUpTheFingerIs(t *testing.T) {
 	in := newFakeInput()
-	touch := newTouchControls(640, 480)
+	touch := newTouchControls(window)
 	stick := touch.layout.stick
 
 	// Far enough across to be full lock, and well up the stick from the middle —
@@ -139,7 +150,7 @@ func TestTouchStickIgnoresHowFarUpTheFingerIs(t *testing.T) {
 // for the moment the finger leaves.
 func TestTouchButtonsAskForTheirAction(t *testing.T) {
 	in := newFakeInput()
-	touch := newTouchControls(640, 480)
+	touch := newTouchControls(window)
 
 	for _, button := range touchButtons {
 		in.touchAt(at(touch.layout.slots[button.slot]))
@@ -163,7 +174,7 @@ func TestTouchButtonsAskForTheirAction(t *testing.T) {
 // menu and close it again for as long as the thumb rested there.
 func TestTouchButtonPressesOnceWhileHeld(t *testing.T) {
 	in := newFakeInput()
-	touch := newTouchControls(640, 480)
+	touch := newTouchControls(window)
 	pause := touch.layout.slots[slotBarRight]
 
 	in.touchAt(at(pause))
@@ -190,7 +201,7 @@ func TestTouchButtonPressesOnceWhileHeld(t *testing.T) {
 // took only one finger at a time would make it impossible.
 func TestTouchStickAndPedalWorkTogether(t *testing.T) {
 	in := newFakeInput()
-	touch := newTouchControls(640, 480)
+	touch := newTouchControls(window)
 	stick := touch.layout.stick
 
 	in.touchAt(
@@ -212,7 +223,7 @@ func TestTouchStickAndPedalWorkTogether(t *testing.T) {
 func TestTouchDrivesTheRace(t *testing.T) {
 	in := newFakeInput()
 	g := newGameplay(in, testLevel(t))
-	g.resize(640, 480)
+	g.resize(window)
 
 	in.touchAt(at(g.touch.layout.slots[slotPedalNear]))
 	if _, err := g.Update(); err != nil {
@@ -237,7 +248,7 @@ func TestTouchDrivesTheRace(t *testing.T) {
 func TestTouchPauseButtonPauses(t *testing.T) {
 	in := newFakeInput()
 	g := newGameplay(in, testLevel(t))
-	g.resize(640, 480)
+	g.resize(window)
 
 	in.touchAt(at(g.touch.layout.slots[slotBarRight]))
 	next, err := g.Update()
@@ -256,7 +267,7 @@ func TestTouchPauseButtonPauses(t *testing.T) {
 func TestTouchSwapButtonSwapsOnRelease(t *testing.T) {
 	in := newFakeInput()
 	g := newGameplay(in, testLevel(t))
-	g.resize(640, 480)
+	g.resize(window)
 
 	in.touchAt(at(g.touch.layout.slots[slotBarLeft]))
 	if _, err := g.Update(); err != nil {
@@ -280,7 +291,7 @@ func TestTouchSwapButtonSwapsOnRelease(t *testing.T) {
 // rule the keys and the pad already settle their disagreements by.
 func TestTouchDoesNotShutOutTheOtherDevices(t *testing.T) {
 	in := newFakeInput()
-	touch := newTouchControls(640, 480)
+	touch := newTouchControls(window)
 
 	in.holdPad(0.6, ebiten.StandardGamepadButtonFrontBottomRight)
 	touch.update(in)
@@ -294,14 +305,14 @@ func TestTouchDoesNotShutOutTheOtherDevices(t *testing.T) {
 // pixels, so a device with more width than the game was drawn for puts the
 // thumbs at its own edges and not at the edges of a 640-wide window.
 func TestTouchControlsFollowTheScreen(t *testing.T) {
-	narrow := newTouchLayout(640, 480)
-	wide := newTouchLayout(1041, 480) // a phone in landscape
+	narrow := newTouchLayout(window)
+	wide := newTouchLayout(viewport{width: 1041, height: window.height}) // the same screen, phone-wide
 
 	if narrow.stick != wide.stick {
 		t.Errorf("the stick moved from %+v to %+v; it is measured from the left edge, which did not move", narrow.stick, wide.stick)
 	}
 
-	gained := float64(1041 - 640)
+	gained := float64(1041 - window.width)
 	if moved := wide.slots[slotPedalNear].x - narrow.slots[slotPedalNear].x; math.Abs(moved-gained) > 0.001 {
 		t.Errorf("the throttle moved %.1f for %.1f of extra width; it is measured from the right edge and should have moved with it", moved, gained)
 	}
@@ -311,13 +322,10 @@ func TestTouchControlsFollowTheScreen(t *testing.T) {
 // controls sit out on the ground either side, so a player driving with their
 // thumbs is not driving with them on top of the car they are parking.
 func TestTouchControlsClearTheLotOnAPhone(t *testing.T) {
-	const (
-		screenWidth = 1041 // a handset in landscape, per Manager.Layout
-		lotWidth    = 640
-	)
+	const lotWidth = 640
 
-	layout := newTouchLayout(screenWidth, 480)
-	lotLeft := float64(screenWidth-lotWidth) / 2
+	layout := newTouchLayout(phone)
+	lotLeft := float64(phone.width-lotWidth) / 2
 	lotRight := lotLeft + lotWidth
 
 	if right := layout.stick.x + layout.stick.radius; right > lotLeft {
@@ -330,22 +338,67 @@ func TestTouchControlsClearTheLotOnAPhone(t *testing.T) {
 	}
 }
 
-// The controls have to be big enough to hit. Apple asks for 44pt, and the game
-// is scaled to the device by its height, so the check is made in the points a
-// handset in landscape actually gives us.
+// The controls have to be big enough to hit. Apple asks for 44pt, and the check
+// is made in points on both shapes of device, because the two arrive at their
+// sizes by different routes — the phone is held down by the fraction of the
+// screen the controls are drawn at, the tablet by the points they are sized in
+// — and either one is free to fall under 44pt without the other noticing.
 func TestTouchControlsAreBigEnoughToHit(t *testing.T) {
-	const (
-		minimumPoints = 44
-		deviceHeight  = 393.0 // an iPhone in landscape, in points
-		gameHeight    = 480.0
-	)
+	const minimumPoints = 44
 
-	scale := deviceHeight / gameHeight
-	layout := newTouchLayout(1041, gameHeight)
+	for _, device := range []struct {
+		name string
+		v    viewport
+	}{
+		{"a phone", phone},
+		{"a tablet", tablet},
+	} {
+		t.Run(device.name, func(t *testing.T) {
+			layout := newTouchLayout(device.v)
 
-	for _, button := range touchButtons {
-		if points := 2 * layout.slots[button.slot].radius * scale; points < minimumPoints {
-			t.Errorf("%s is %.1fpt across on a phone, under the %dpt a touch target has to be", button.label, points, minimumPoints)
-		}
+			for _, button := range touchButtons {
+				if points := 2 * layout.slots[button.slot].radius * device.v.pointsPerPixel; points < minimumPoints {
+					t.Errorf("%s is %.1fpt across on %s, under the %dpt a touch target has to be",
+						button.label, points, device.name, minimumPoints)
+				}
+			}
+		})
+	}
+}
+
+// What sizing the controls in points is for. A tablet's screen is the same 480
+// game pixels tall as a phone's but well over twice as many points, so a stick
+// written down in game pixels would come out twice the size in the hand. The
+// stick is the same size on the glass on both, and the tablet pays for it by
+// drawing it in fewer game pixels.
+func TestTouchControlsAreTheSameSizeInTheHandOnEveryDevice(t *testing.T) {
+	onPhone, onTablet := newTouchLayout(phone), newTouchLayout(tablet)
+
+	inHand := func(v viewport, radius float64) float64 { return 2 * radius * v.pointsPerPixel }
+	got, want := inHand(tablet, onTablet.stick.radius), inHand(phone, onPhone.stick.radius)
+	if math.Abs(got-want) > 1 {
+		t.Errorf("the stick is %.1fpt across on a tablet and %.1fpt on a phone; a thumb is the same on both", got, want)
+	}
+
+	if onTablet.stick.radius >= onPhone.stick.radius {
+		t.Errorf("the stick is %.1f game pixels on a tablet and %.1f on a phone; the tablet has more points to the pixel and should be drawing it smaller",
+			onTablet.stick.radius, onPhone.stick.radius)
+	}
+}
+
+// A tablet is nearly the shape the lot is drawn in, so there is no ground
+// beside it and the controls have to sit on the lot itself. What they must not
+// do is sit on the part of it being played: a corner each is the price of
+// driving with thumbs, a quarter of the lot is not.
+func TestTouchControlsTakeOnlyACornerOfTheLotOnATablet(t *testing.T) {
+	const lotWidth = 640
+
+	layout := newTouchLayout(tablet)
+	lotLeft := float64(tablet.width-lotWidth) / 2
+
+	over := layout.stick.x + layout.stick.radius - lotLeft
+	if share := over / lotWidth; share > 0.15 {
+		t.Errorf("the stick covers %.0f of the lot's %d pixels (%.0f%%), more than the corner it is allowed",
+			over, lotWidth, share*100)
 	}
 }

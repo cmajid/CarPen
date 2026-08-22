@@ -11,9 +11,9 @@ Module `github.com/cmajid/carpen`, three packages: `main` (window wiring only), 
 
 | File | Owns |
 |---|---|
-| `main.go` | Nothing but window setup: builds a `scene.Manager` on `scene.NewMenu` and hands it to `ebiten.RunGame`. Game logic does not belong here. |
+| `main.go` | Nothing but window setup: builds a `scene.Manager` on `scene.NewMenu`, opens a resizable window at the largest whole multiple of the design size the monitor holds, and hands it to `ebiten.RunGame`. Game logic does not belong here. |
 | `scene/scene.go` | `Scene` interface (`Update() (next Scene, err error)`) and the `Input` seam — keyboard, mouse and pad, as edges (`…JustPressed`) **and** as levels (`IsKeyPressed`, `GamepadButtonValue`, `GamepadAxisValue`), so every screen is testable without a window. |
-| `scene/manager.go` | `Manager`: the `ebiten.Game` impl, fixed 640×480 `Layout`, and the scene switch. |
+| `scene/manager.go` | `Manager`: the `ebiten.Game` impl, the scene switch, the F11 fullscreen toggle, and `Layout` — which holds the height at 480, follows the device's aspect ratio for the width (a phone gets ~1041, a tablet ~640–731), and records `pointsPerPixel`, what one game pixel is in the device's own units. Scenes receive all three as a `viewport`; anything a thumb has to hit is sized through `viewport.size`, never in game pixels alone. Also the one home of the design size, `DesignWidth`/`DesignHeight` (640×480) — never write those numbers anywhere else. |
 | `scene/ui.go` | The design system every screen draws from: palette, type scale (Go fonts via `text/v2`), panels, the bottom prompt bar, scene fade. Change a colour or size **here**, not in a screen. |
 | `scene/menulist.go` | `menuList`, the one focusable list all menus are built from: wraps at both ends, keyboard + mouse, focus shown by shape and weight as well as colour. |
 | `scene/controls.go` | The binding table: `action` (what the player *means*) mapped to keys, pad buttons and — for steering — a stick axis. `justPressed`/`justReleased` read edges; `analog` reads how far a control is being asked for, in 0..1, past `analogDeadzone`. Rebind **here**, never at a use site. |

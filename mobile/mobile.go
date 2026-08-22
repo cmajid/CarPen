@@ -13,15 +13,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/mobile"
 )
 
-// The size the game is laid out at, matching main.go. On a phone this is not
-// the size of anything real — the screen is a different shape and a different
-// number of pixels — so it stays until Layout is taught about the device it is
-// actually on, and then it goes.
-const (
-	screenWidth  = 640
-	screenHeight = 480
-)
-
 func init() {
 	levels, err := carpen.Levels()
 	if err != nil {
@@ -32,7 +23,7 @@ func init() {
 		panic(err)
 	}
 
-	mobile.SetGame(scene.NewManager(screenWidth, screenHeight, scene.NewMenu(scene.NewDevices(), levels[0])))
+	mobile.SetGame(scene.NewManager(scene.NewMenu(scene.NewDevices(), levels[0])))
 }
 
 // Dummy is here because gomobile will not bind a package that exports nothing,

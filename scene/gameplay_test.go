@@ -121,7 +121,7 @@ func TestTheLevelSurvivesEveryWayBackToTheGame(t *testing.T) {
 
 	t.Run("restarting from the pause", func(t *testing.T) {
 		in := newFakeInput()
-		m := NewManager(640, 480, newGameplay(in, level))
+		m := NewManager(newGameplay(in, level))
 
 		tick(t, m, in, ebiten.KeyEscape)
 		choose(t, m, in, pauseRestart)
@@ -137,7 +137,7 @@ func TestTheLevelSurvivesEveryWayBackToTheGame(t *testing.T) {
 
 	t.Run("racing again from the results", func(t *testing.T) {
 		in := newFakeInput()
-		m := NewManager(640, 480, newGameplay(in, level))
+		m := NewManager(newGameplay(in, level))
 
 		tick(t, m, in, ebiten.KeyEnter)
 		choose(t, m, in, resultsAgain)
@@ -153,7 +153,7 @@ func TestTheLevelSurvivesEveryWayBackToTheGame(t *testing.T) {
 
 	t.Run("out to the menu and back in", func(t *testing.T) {
 		in := newFakeInput()
-		m := NewManager(640, 480, newGameplay(in, level))
+		m := NewManager(newGameplay(in, level))
 
 		tick(t, m, in, ebiten.KeyEscape)
 		choose(t, m, in, pauseQuit)

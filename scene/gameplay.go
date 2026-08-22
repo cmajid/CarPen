@@ -35,9 +35,10 @@ type Gameplay struct {
 	// It is made once. Building it per frame is the image churn #14 took out.
 	world *ebiten.Image
 
-	// width and height are the screen the manager last reported, which the HUD
-	// and the on-screen controls are laid out against.
-	width, height int
+	// view is the screen the manager last reported, which the HUD and the
+	// on-screen controls are laid out against — its size, and how big one game
+	// pixel is on the device holding it.
+	view viewport
 
 	// OnCollision is the rules layer's ear. Detection only raises the event;
 	// whatever is plugged in here decides what a crash means, so no game-over
@@ -112,7 +113,7 @@ func newGameplay(in Input, level carpen.Level) *Gameplay {
 	// The lot's own size stands in until the manager says how big the screen
 	// really is, so a race drawn before its first resize is drawn somewhere
 	// sensible rather than at nothing by nothing.
-	g.resize(int(level.Lot.Width), int(level.Lot.Height))
+	g.resize(viewport{width: int(level.Lot.Width), height: int(level.Lot.Height)})
 
 	return g
 }
@@ -120,9 +121,9 @@ func newGameplay(in Input, level carpen.Level) *Gameplay {
 // resize lays the screen furniture out around a screen of this size. The lot
 // itself is not laid out again: it is the size the level says it is, and it is
 // put in the middle of whatever room there is (see worldOffset).
-func (g *Gameplay) resize(width, height int) {
-	g.width, g.height = width, height
-	g.touch.resize(width, height)
+func (g *Gameplay) resize(v viewport) {
+	g.view = v
+	g.touch.resize(v)
 }
 
 // worldOffset is where the lot's top left corner goes: the middle of the
@@ -130,7 +131,7 @@ func (g *Gameplay) resize(width, height int) {
 // rather than left in a strip down one edge.
 func (g *Gameplay) worldOffset() (x, y float64) {
 	bounds := g.world.Bounds()
-	return math.Round(float64(g.width-bounds.Dx()) / 2), math.Round(float64(g.height-bounds.Dy()) / 2)
+	return math.Round(float64(g.view.width-bounds.Dx()) / 2), math.Round(float64(g.view.height-bounds.Dy()) / 2)
 }
 
 func newCar(paint string, x float64, y float64, rotate float64, active bool) carpen.Car {
@@ -300,11 +301,13 @@ func (g *Gameplay) Draw(screen *ebiten.Image) {
 		g.drawOBBs(g.world)
 	}
 
-	// Whatever the screen has over and above the lot is drawn in the menus'
-	// dark ink rather than in more lot, and the lot goes in the middle of it.
-	screen.Fill(colourInk)
+	// Whatever the screen has over and above the lot is ground the level does
+	// not reach, and the lot goes in the middle of it.
+	left, top := g.worldOffset()
+	g.drawSurround(screen, left, top)
+
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(g.worldOffset())
+	op.GeoM.Translate(left, top)
 	screen.DrawImage(g.world, op)
 
 	// The HUD and the controls belong to the screen rather than to the lot, so
@@ -319,6 +322,36 @@ func (g *Gameplay) Draw(screen *ebiten.Image) {
 	}
 
 	g.fade.draw(screen)
+}
+
+// drawSurround paints what is on the screen but not in the level: the ground
+// beyond the lot, and the kerb the lot ends at.
+//
+// The lot is 4:3 because the level is, and a handset is nothing like 4:3, so on
+// a phone there are a couple of hundred pixels down each side that no level can
+// ever reach. Filling them with the menus' ink made a race look like it had
+// failed to draw — a black band beside a white lot reads as a hole rather than
+// as somewhere. They are drawn as ground instead, which is what they are.
+//
+// The kerb is not decoration. The walls that stop the car stand exactly on the
+// lot's edge (see lotWalls), and until now the player was asked to feel for
+// them: an edge that can be seen is an edge that can be parked against.
+func (g *Gameplay) drawSurround(screen *ebiten.Image, left, top float64) {
+	screen.Fill(colourOutside)
+
+	const kerb = 5
+
+	bounds := g.world.Bounds()
+	width, height := float64(bounds.Dx()), float64(bounds.Dy())
+
+	// Drawn just outside the lot on all four sides, so the blit that follows
+	// lands inside it rather than over it. Where the lot already reaches the
+	// screen's edge — the top and bottom of a phone, every side of a 4:3
+	// window — the strip falls off the screen and costs nothing.
+	fillRect(screen, left-kerb, top-kerb, width+2*kerb, kerb, colourKerb)
+	fillRect(screen, left-kerb, top+height, width+2*kerb, kerb, colourKerb)
+	fillRect(screen, left-kerb, top, kerb, height, colourKerb)
+	fillRect(screen, left+width, top, kerb, height, colourKerb)
 }
 
 // drawOBBs outlines every box collision sees — the development overlay behind

@@ -42,11 +42,11 @@ func NewMenu(in Input, level carpen.Level) *Menu {
 		list:  newMenuList(56, 286, 224, "Start Race", "Quit"),
 		level: level,
 		car:   carpen.CarImage("yellow"),
-		width: 640,
+		width: DesignWidth,
 	}
 }
 
-func (m *Menu) resize(width, _ int) { m.width = width }
+func (m *Menu) resize(v viewport) { m.width = v.width }
 
 func (m *Menu) Update() (Scene, error) {
 	m.fade.update()

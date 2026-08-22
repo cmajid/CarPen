@@ -29,6 +29,8 @@ var (
 	colourAccentInk = color.RGBA{R: 0x14, G: 0x18, B: 0x1f, A: 0xff} // text written on top of the accent
 	colourLine      = color.RGBA{R: 0x2a, G: 0x35, B: 0x42, A: 0xff}
 	colourBay       = color.RGBA{R: 0x8a, G: 0x96, B: 0xa4, A: 0xff} // the bay painted on the lot, which is a pale ground
+	colourOutside   = color.RGBA{R: 0x33, G: 0x3c, B: 0x48, A: 0xff} // the ground beyond the lot, on a screen wider than the level
+	colourKerb      = color.RGBA{R: 0x6d, G: 0x78, B: 0x86, A: 0xff} // the painted edge the lot stops at
 	colourDanger    = color.RGBA{R: 0xe5, G: 0x4b, B: 0x4b, A: 0xff} // a box the moment it is overlapping, on the F3 overlay
 
 	// These are all drawn over something else, so they are written with their

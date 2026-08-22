@@ -110,23 +110,38 @@ func (c touchCircle) contains(x, y float64) bool {
 	return dx*dx+dy*dy <= c.radius*c.radius
 }
 
-// The on-screen controls are sized and placed as fractions of the screen's
-// height, never in pixels: the game is laid out at a fixed height and a width
-// that follows the device (see Manager.Layout), so the height is the one number
-// that means the same thing on every screen the game runs on. A phone, a tablet
-// and a desktop window each get controls the same size relative to the game,
-// and the wider the device the further apart the two thumbs sit.
+// The on-screen controls are sized for the thumb that presses them, and a thumb
+// is the same size on every device the game runs on. The game's own pixels are
+// not: it is laid out 480 tall whatever it is on, so a handset draws one game
+// pixel about eight tenths of a point across and an iPad well over two. A stick
+// written down as 154 game pixels is 126pt on a phone, which is a thumb, and
+// 262pt on an iPad, which is a quarter of the screen and further than a thumb
+// reaches.
 //
-// The sizes are floors set by the thumb rather than by the drawing: the pedals
-// come out around 110 game pixels across, which on a phone in landscape is
-// comfortably past the 44pt Apple asks a touch target to be, with the smaller
-// row along the top still clearing it.
+// So each size below is a pair: what it has to be on the glass, in points, and
+// what it was drawn at, as a fraction of the screen's height. The smaller of
+// the two wins (viewport.size). On a phone that is the drawing, so these are
+// the sizes the controls have always had there; on a tablet it is the thumb,
+// and the controls shrink in game pixels to stay the same size in the hand.
+//
+// The point sizes are what a phone in landscape already produced, which is what
+// keeps the handset layout where it was. The smallest of them, the row along
+// the top, comes to 48pt across — clear of the 44pt Apple asks a touch target
+// to be, and the tablet holds it there rather than falling under it.
 const (
-	touchMargin    = 0.05  // from the screen's edge to the nearest control
-	touchGap       = 0.035 // between one control and the next
-	touchStickSize = 0.16  // the steering stick's base
-	touchPedalSize = 0.115 // the two pedals under the right thumb
-	touchBarSize   = 0.06  // the row of smaller buttons along the top
+	touchMarginPoints = 20.0 // from the screen's edge to the nearest control
+	touchGapPoints    = 14.0 // between one control and the next
+	touchStickPoints  = 63.0 // the steering stick's base, as a radius
+	touchPedalPoints  = 45.0 // the two pedals under the right thumb
+	touchBarPoints    = 24.0 // the row of smaller buttons along the top
+
+	// The same five as fractions of the screen's height, which is what they are
+	// held down to on a screen with fewer points to spend than a phone has.
+	touchMargin    = 0.05
+	touchGap       = 0.035
+	touchStickSize = 0.16
+	touchPedalSize = 0.115
+	touchBarSize   = 0.06
 
 	// touchStickReach is how much wider than it looks the stick's catchment is.
 	// A thumb going for the stick lands near it rather than on it, and a stick
@@ -146,19 +161,27 @@ type touchLayout struct {
 	slots [numTouchSlots]touchCircle
 }
 
-// newTouchLayout places the controls on a screen width by height. The stick
-// goes bottom left and the pedals bottom right, which is where the thumbs
-// already are when a phone is held in two hands; the buttons that are pressed
-// between manoeuvres rather than during them go along the top, out of the way
-// of both.
-func newTouchLayout(width, height int) touchLayout {
-	w, h := float64(width), float64(height)
+// newTouchLayout places the controls on v. The stick goes bottom left and the
+// pedals bottom right, which is where the thumbs already are when a phone is
+// held in two hands; the buttons that are pressed between manoeuvres rather
+// than during them go along the top, out of the way of both.
+//
+// They are placed against the screen's edges rather than against the lot. On a
+// handset those are nearly the same instruction — the lot is centred and a
+// phone is wide enough to leave open ground either side, which is where the
+// thumbs land anyway — but a tablet is close to the shape the lot is drawn in,
+// so there is no ground to leave and the controls come to rest on the lot's own
+// corners. That is what the point sizing above is for and what the controls are
+// drawn faint for (colourTouch): on a tablet a control has to cover a corner of
+// the lot, and it should cover no more of it than a thumb needs.
+func newTouchLayout(v viewport) touchLayout {
+	w, h := float64(v.width), float64(v.height)
 
-	margin := h * touchMargin
-	gap := h * touchGap
-	stick := h * touchStickSize
-	pedal := h * touchPedalSize
-	bar := h * touchBarSize
+	margin := v.size(touchMarginPoints, touchMargin)
+	gap := v.size(touchGapPoints, touchGap)
+	stick := v.size(touchStickPoints, touchStickSize)
+	pedal := v.size(touchPedalPoints, touchPedalSize)
+	bar := v.size(touchBarPoints, touchBarSize)
 
 	l := touchLayout{
 		stick: touchCircle{x: margin + stick, y: h - margin - stick, radius: stick},
@@ -217,8 +240,8 @@ type touchControls struct {
 // scene's own resize rather than worked out while drawing, because where the
 // controls are is what update hit-tests against, and a control that is drawn in
 // one place and pressed in another is worse than no control at all.
-func (t *touchControls) resize(width, height int) {
-	t.layout = newTouchLayout(width, height)
+func (t *touchControls) resize(v viewport) {
+	t.layout = newTouchLayout(v)
 }
 
 // update reads every finger on the screen onto the controls, once per tick. It

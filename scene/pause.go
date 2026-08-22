@@ -33,7 +33,7 @@ func newPause(g *Gameplay) *Pause {
 		list:   newMenuList(0, 216, 228, "Resume", "Restart", "Quit to Menu"),
 		resume: g,
 	}
-	p.resize(g.width, g.height)
+	p.resize(g.view)
 
 	g.releaseControls()
 
@@ -43,10 +43,10 @@ func newPause(g *Gameplay) *Pause {
 // resize centres the overlay, and passes the size on to the race underneath —
 // which is still being drawn behind it, and would otherwise sit off to one side
 // of its own pause menu if the screen changed while the game was paused.
-func (p *Pause) resize(width, height int) {
-	p.width = width
-	p.list.centreOn(float64(width))
-	p.resume.resize(width, height)
+func (p *Pause) resize(v viewport) {
+	p.width = v.width
+	p.list.centreOn(float64(v.width))
+	p.resume.resize(v)
 }
 
 func (p *Pause) Update() (Scene, error) {

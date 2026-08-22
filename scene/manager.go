@@ -4,6 +4,17 @@ import (
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
+)
+
+// DesignWidth and DesignHeight are the size the game is laid out at: the
+// coordinate space the levels, the menus and the sprites are all written in.
+// It is not the size of anything on a screen — Layout takes it to whatever
+// shape the device turns out to be, and Ebitengine scales the result to fill
+// the glass — so it is written down here once and nowhere else.
+const (
+	DesignWidth  = 640
+	DesignHeight = 480
 )
 
 // Manager runs one scene at a time. It is the ebiten.Game the window drives, and
@@ -19,6 +30,11 @@ type Manager struct {
 	// the shape of the device it turned out to be running on.
 	screenWidth,
 	screenHeight int
+
+	// pointsPerPixel is what one game pixel turned out to be on the device,
+	// worked out in Layout and handed to the scenes with the size. It is zero
+	// until Layout has been called for the first time.
+	pointsPerPixel float64
 }
 
 var _ ebiten.Game = (*Manager)(nil)
@@ -31,15 +47,51 @@ var _ ebiten.Game = (*Manager)(nil)
 // It is optional: a scene that looks the same on every device says nothing and
 // gets asked nothing.
 type resizer interface {
-	resize(width, height int)
+	resize(v viewport)
 }
 
-// NewManager starts the game on first, in a screen width by height pixels. That
+// viewport is the screen a scene lays itself out on: how big it is in the
+// game's own pixels, and how big one of those pixels is on the glass.
+//
+// The second half is what a phone and a tablet disagree about. The game is
+// always 480 pixels tall whatever it is running on, so on a handset one game
+// pixel is about eight tenths of a point and on an iPad it is over two — which
+// means a control written down as so many game pixels comes out half as wide
+// again on the tablet, and a stick sized to a thumb on a phone ends up a
+// quarter of the screen on an iPad. Anything a finger has to land on is sized
+// through this rather than in game pixels alone.
+type viewport struct {
+	width, height int
+
+	// pointsPerPixel is how much of the device's own measure — points on a
+	// phone or a tablet, logical pixels in a window — one game pixel is drawn
+	// across. Zero means nothing is known about the device yet, which is where
+	// the game stands until Ebiten first calls Layout.
+	pointsPerPixel float64
+}
+
+// size works out how big one part of a touch control should be, in game pixels.
+// It is the smaller of two answers: points, the size the thing has to be on the
+// glass, which is what a thumb measures in and is the same on every device; and
+// fraction of the screen's height, the size it was drawn at, which stops a
+// control swallowing a screen that has few points to give.
+//
+// A device that has said nothing about itself gets the drawing's own size,
+// which is what every screen got before there was a device in the picture.
+func (v viewport) size(points, fraction float64) float64 {
+	drawn := fraction * float64(v.height)
+	if v.pointsPerPixel <= 0 {
+		return drawn
+	}
+	return math.Min(points/v.pointsPerPixel, drawn)
+}
+
+// NewManager starts the game on first, in a screen of the design size. That
 // size is the game's own — what the levels are laid out in and what the menus
 // are drawn at — and stays the smallest the screen can be, whatever device it
 // ends up on.
-func NewManager(width, height int, first Scene) *Manager {
-	m := &Manager{current: first, width: width, height: height, screenWidth: width, screenHeight: height}
+func NewManager(first Scene) *Manager {
+	m := &Manager{current: first, width: DesignWidth, height: DesignHeight, screenWidth: DesignWidth, screenHeight: DesignHeight}
 	m.resizeCurrent()
 	return m
 }
@@ -48,6 +100,14 @@ func NewManager(width, height int, first Scene) *Manager {
 // The scene taking over is first updated on the next tick, so the key press that
 // ended one scene is never read a second time by the one that follows it.
 func (m *Manager) Update() error {
+	// Fullscreen is the window's business rather than any scene's, so the
+	// toggle lives here with the rest of what Ebiten drives directly. On a
+	// device with no window to grow — a phone, a tablet — the key never comes
+	// and the call would do nothing anyway.
+	if inpututil.IsKeyJustPressed(ebiten.KeyF11) {
+		ebiten.SetFullscreen(!ebiten.IsFullscreen())
+	}
+
 	m.resizeCurrent()
 
 	next, err := m.current.Update()
@@ -66,7 +126,11 @@ func (m *Manager) Update() error {
 
 func (m *Manager) resizeCurrent() {
 	if scene, ok := m.current.(resizer); ok {
-		scene.resize(m.screenWidth, m.screenHeight)
+		scene.resize(viewport{
+			width:          m.screenWidth,
+			height:         m.screenHeight,
+			pointsPerPixel: m.pointsPerPixel,
+		})
 	}
 }
 
@@ -86,7 +150,15 @@ func (m *Manager) Draw(screen *ebiten.Image) {
 // on-screen controls go — so the controls cost the player none of the race.
 //
 // It never returns less than the width the game was written at, so a portrait
-// or square window letterboxes rather than cutting the lot off the sides.
+// or square window letterboxes rather than cutting the lot off the sides. A
+// tablet is close enough to the lot's own 4:3 that it comes out at very nearly
+// the 640x480 the game is drawn in, filling the screen with no bars and no
+// stretching — and with no ground to spare either side, which is what the
+// controls in touch.go have to answer for.
+//
+// It also records what one game pixel is on the device (see viewport), which is
+// the only place that can be known: outsideHeight is the one number the
+// platform gives us in the player's own units rather than the game's.
 func (m *Manager) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
 	if outsideWidth <= 0 || outsideHeight <= 0 {
 		return m.screenWidth, m.screenHeight // nothing to go on; keep what we had
@@ -98,5 +170,11 @@ func (m *Manager) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHe
 	}
 
 	m.screenWidth, m.screenHeight = width, m.height
+
+	// The outside size is in the device's own measure — points on a phone or a
+	// tablet — and the height is the axis the game is pinned to, so the two
+	// together are the scale everything a thumb has to hit is sized by.
+	m.pointsPerPixel = float64(outsideHeight) / float64(m.height)
+
 	return width, m.height
 }

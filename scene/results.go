@@ -36,13 +36,13 @@ func newResults(in Input, level carpen.Level) *Results {
 		list:  newMenuList(0, 254, 228, "Race Again", "Main Menu"),
 		level: level,
 	}
-	r.resize(640, 480)
+	r.resize(viewport{width: DesignWidth, height: DesignHeight})
 	return r
 }
 
-func (r *Results) resize(width, _ int) {
-	r.width = width
-	r.list.centreOn(float64(width))
+func (r *Results) resize(v viewport) {
+	r.width = v.width
+	r.list.centreOn(float64(v.width))
 }
 
 func (r *Results) Update() (Scene, error) {

@@ -174,7 +174,7 @@ var touchButtons = [...]touchButton{
 	{action: actionBrake, label: "BACK", slot: slotPedalFar},
 	{action: actionCancel, label: "II", slot: slotBarRight},
 	{action: actionFinish, label: "PARK", slot: slotBarMiddle},
-	{action: actionSwapCar, label: "SWAP", slot: slotBarLeft},
+	{action: actionSwapCar, label: "SWAPPP", slot: slotBarLeft},
 }
 
 // analogDeadzone is how far a trigger or a stick has to leave its rest before
